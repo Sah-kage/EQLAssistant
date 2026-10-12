@@ -138,7 +138,8 @@ function renderFight(d) {
 
   $('#fight-detail').innerHTML = `
     <div class="panel-h"><span>${esc(d.name)} ${d.done ? '' : '<span class="badge">LIVE</span>'}</span>
-      <span class="muted">${dt(d.start)} · ${mmss(d.duration)} · raid ${dps(d.raid_dps)} dps</span></div>
+      <span class="muted">${dt(d.start)} · ${mmss(d.duration)} · raid ${dps(d.raid_dps)} dps
+        <button class="primary" id="deep-open" style="margin-left:10px" title="Every hit, miss, cast and resist, with percentages">Deep dive</button></span></div>
     <div class="side-h"><span class="dot" style="background:var(--blue)"></span>Players &amp; group</div>
     <table><tr><th>Name</th><th>Damage</th><th>%</th><th>DPS</th><th title="DPS over own active time">SDPS</th>
       <th>Hits</th><th title="Melee hits ÷ melee swings">Acc</th><th>Max</th><th>Crits</th><th>Taken</th><th>Type</th></tr>${prow}</table>
@@ -152,6 +153,7 @@ function renderFight(d) {
         <button data-side="npc" class="${logSide === 'npc' ? 'on' : ''}">NPCs</button></span></div>
     <div class="log">${logHtml}</div>`;
   $('#fight-detail .log').scrollTop = keepScroll;
+  $('#deep-open').onclick = () => openDeep(d.id);
   $$('#logseg button').forEach(b => b.onclick = () => { logSide = b.dataset.side; renderFight(d); });
   $$('#fight-detail tr[data-bd-name]').forEach(tr => tr.onclick = () => openBreakdown(d.id, tr.dataset.bdName, tr.dataset.bdSide));
 }
@@ -243,6 +245,158 @@ $('#rune-set').onclick = () => {
     closeModal(); refreshSky();
   };
 };
+
+// ---------- fight deep dive ----------
+const dp = {id: null, tab: 'overview', data: null, open: {}, f: {type: 'all', who: '', q: ''}, timer: null};
+const pct = v => v == null ? '—' : `${v}%`;
+const pbar = (v, cls = '') => v == null ? '—' : `<span class="pb ${cls}"><span class="tr"><i style="width:${Math.min(100, v)}%"></i></span><b>${v}%</b></span>`;
+const OUTCOME_LABEL = {hit: 'Hit', miss: 'Miss', dodge: 'Dodge', parry: 'Parry', block: 'Block', riposte: 'Riposte',
+  absorb: 'Absorb', invulnerable: 'Invulnerable'};
+async function openDeep(id) {
+  dp.id = id; dp.open = {}; dp.f = {type: 'all', who: '', q: ''};
+  $('#deep').hidden = false; document.body.classList.add('noscroll');
+  await loadDeep();
+  clearInterval(dp.timer);
+  dp.timer = setInterval(() => { if (dp.data && !dp.data.done && !$('#deep').hidden) loadDeep(); }, 3000);
+}
+function closeDeep() { $('#deep').hidden = true; document.body.classList.remove('noscroll'); clearInterval(dp.timer); }
+$('#dp-close').onclick = closeDeep;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#deep').hidden && $('#modal').hidden) closeDeep(); });
+$$('#dp-tabs button').forEach(b => b.onclick = () => { dp.tab = b.dataset.dp; $$('#dp-tabs button').forEach(x => x.classList.toggle('on', x === b)); renderDeep(); });
+async function loadDeep() {
+  const d = await get(`/api/fight/deep?id=${dp.id}&` + q());
+  if (!d || !d.id) { $('#dp-body').innerHTML = '<div class="empty">That fight is no longer in the history.</div>'; return; }
+  dp.data = d; renderDeep();
+}
+function deepTimeline(d) {
+  const tl = d.timeline, n = tl.friend.length, W = 900, H = 70;
+  const top = Math.max(1, ...tl.friend, ...tl.npc), bw = W / Math.max(n, 1);
+  const bars = (arr, cls, off) => arr.map((v, i) => v ? `<rect class="${cls}" x="${i * bw + off}" y="${H - (H - 4) * v / top}" width="${Math.max(1, bw / 2 - 1)}" height="${(H - 4) * v / top}"><title>+${mmss(i * tl.step)}: ${num(v)}</title></rect>` : '').join('');
+  return `<div class="dp-tl"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${bars(tl.friend, 'f', 0)}${bars(tl.npc, 'n', bw / 2)}</svg>
+    <div class="dp-tl-k"><span><i class="f"></i>your side</span><span><i class="n"></i>NPCs</span><span class="muted">damage per ${tl.step}s</span></div></div>`;
+}
+function renderDeep() {
+  const d = dp.data; if (!d) return;
+  const c = d.counts, st = d.spell_totals;
+  const swings = [...d.friends, ...d.npcs].reduce((a, r) => a + (r.melee ? r.melee.swings : 0), 0);
+  const hits = [...d.friends, ...d.npcs].reduce((a, r) => a + (r.melee ? r.melee.hits : 0), 0);
+  $('#dp-title').textContent = `${d.name} — deep dive`;
+  $('#dp-sub').innerHTML = `${dt(d.start)} · ${mmss(d.duration)}${d.done ? '' : ' · <span class="badge">LIVE</span>'}${d.events_capped ? ' · very long fight: first 20,000 events' : ''}`;
+  const stat = (label, val, sub = '') => `<div><label>${label}</label><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  $('#dp-stats').innerHTML = stat('Damage hits', num(c.hit || 0)) +
+    stat('Melee swings', num(swings), swings ? `${pct(Math.round(1000 * hits / swings) / 10)} landed` : '') +
+    stat('Misses &amp; avoids', num(c.avoid || 0)) +
+    stat('Your casts', num(st.casts), st.casts ? `${pct(st.fizzle_pct)} fizzled · ${pct(st.interrupt_pct)} interrupted` : '') +
+    stat('Your resists', num(st.resists), (st.landed + st.resists) ? `${pct(st.resist_pct)} of spells that reached a target` : '') +
+    stat('You resisted', num(d.you_resisted.reduce((a, r) => a + r.count, 0))) +
+    stat('Deaths', num(c.death || 0));
+  const body = $('#dp-body');
+  if (dp.tab === 'overview') body.innerHTML = deepTimeline(d) + deepWho(d.friends, 'Your side', 'friend') + deepWho(d.npcs, 'NPCs', 'npc');
+  else if (dp.tab === 'melee') body.innerHTML = deepMelee(d);
+  else if (dp.tab === 'spells') body.innerHTML = deepSpells(d);
+  else if (dp.tab === 'defence') body.innerHTML = deepDefence(d);
+  else body.innerHTML = deepLog(d);
+  $$('#dp-body tr[data-dp-who]').forEach(tr => tr.onclick = () => { const k = tr.dataset.dpWho; dp.open[k] = !dp.open[k]; renderDeep(); });
+  $$('#dp-body [data-dpf]').forEach(el => el.oninput = el.onchange = () => {
+    dp.f[el.dataset.dpf] = el.value;
+    const keep = el.dataset.dpf === 'q' ? el.selectionStart : null;
+    renderDeep();
+    if (keep != null) { const i = $('#dp-body [data-dpf=q]'); i.focus(); i.setSelectionRange(keep, keep); }
+  });
+}
+function deepWho(rows, title, side) {
+  if (!rows.length) return '';
+  const tr = rows.map(r => {
+    const k = side + ':' + r.name, open = dp.open[k];
+    const m = r.melee;
+    const detail = open ? `<tr class="dp-sub"><td colspan="11">
+      <div class="dp-two">
+        <div><h4>Damage by ability</h4><table><tr><th>Ability</th><th>Hits</th><th>Damage</th><th>Share</th><th>Avg</th><th>Min</th><th>Max</th><th>Crit %</th></tr>
+          ${r.abilities.map(a => `<tr><td>${esc(a.name)}</td><td>${num(a.count)}</td><td>${num(a.dmg)}</td><td>${pbar(a.pct)}</td><td>${num(a.avg)}</td><td>${num(a.min || 0)}</td><td>${num(a.max)}</td><td>${pct(a.crit_pct)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No damage.</td></tr>'}</table></div>
+        <div><h4>Targets</h4><table><tr><th>Target</th><th>Damage</th><th>Share</th></tr>
+          ${r.targets.map(t => `<tr><td>${esc(t.name)}</td><td>${num(t.dmg)}</td><td>${pbar(t.pct)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">—</td></tr>'}</table>
+          ${m ? `<h4>Melee outcomes</h4><table><tr><th>Outcome</th><th>Count</th><th>%</th></tr>${m.outcomes.map(o => `<tr><td>${OUTCOME_LABEL[o.outcome] || o.outcome}</td><td>${num(o.count)}</td><td>${pbar(o.pct, o.outcome === 'hit' ? '' : 'bad')}</td></tr>`).join('')}</table>` : ''}
+          ${r.avoided_total ? `<h4>Swings at ${esc(r.name)} that missed</h4><p class="muted">${r.avoided.map(a => `${OUTCOME_LABEL[a.outcome] || a.outcome} ${num(a.count)}`).join(' · ')}</p>` : ''}</div>
+      </div></td></tr>` : '';
+    return `<tr class="click ${r.name === 'You' ? 'you' : ''}" data-dp-who="${esc(k)}">
+      <td><span class="caret">${open ? '▾' : '▸'}</span> ${esc(r.name)} ${side === 'friend' ? `<span class="tag-type ${r.type}">${TYPE_LABEL[r.type] || ''}</span>` : ''}</td>
+      <td>${num(r.dmg)}</td><td>${pbar(r.share)}</td><td><b>${dps(r.dps)}</b></td><td>${num(r.hits)}</td><td>${num(r.avg)}</td><td>${num(r.max)}</td>
+      <td>${pct(r.crit_pct)}</td><td>${m ? pbar(m.hit_pct) : '—'}</td><td>${m ? num(m.swings) : '—'}</td><td class="red">${r.taken ? num(r.taken) : '—'}</td></tr>${detail}`;
+  }).join('');
+  return `<h3>${title} <span class="muted">click a row for abilities, targets and misses</span></h3>
+    <table class="dp-t"><tr><th>Name</th><th>Damage</th><th>Share</th><th>DPS</th><th>Hits</th><th>Avg</th><th>Max</th><th>Crit %</th><th>Melee hit %</th><th>Swings</th><th>Taken</th></tr>${tr}</table>`;
+}
+function deepMelee(d) {
+  const cols = ['hit', 'miss', 'dodge', 'parry', 'block', 'riposte', 'absorb', 'invulnerable'];
+  const tbl = (rows, title) => {
+    rows = rows.filter(r => r.melee);
+    if (!rows.length) return '';
+    const used = cols.filter(o => rows.some(r => r.melee.outcomes.some(x => x.outcome === o)));
+    return `<h3>${title}</h3><table class="dp-t"><tr><th>Attacker</th><th>Swings</th>${used.map(o => `<th>${OUTCOME_LABEL[o]}</th>`).join('')}<th>Melee dmg</th><th>Avg hit</th><th>Max</th><th>Crit %</th></tr>
+      ${rows.map(r => { const m = r.melee, by = Object.fromEntries(m.outcomes.map(o => [o.outcome, o]));
+        return `<tr class="${r.name === 'You' ? 'you' : ''}"><td>${esc(r.name)}</td><td>${num(m.swings)}</td>${used.map(o => `<td>${by[o] ? `${num(by[o].count)} <span class="muted">(${by[o].pct}%)</span>` : '—'}</td>`).join('')}
+          <td>${num(m.dmg)}</td><td>${num(m.avg)}</td><td>${num(m.max)}</td><td>${pct(m.crit_pct)}</td></tr>`; }).join('')}</table>`;
+  };
+  return (tbl(d.friends, 'Your side swinging') + tbl(d.npcs, 'NPCs swinging')) || '<div class="empty">No melee in this fight.</div>';
+}
+function deepSpells(d) {
+  const st = d.spell_totals;
+  const rows = d.spells.map(s => `<tr><td>${esc(s.name)}</td><td>${num(s.casts)}</td><td>${num(s.landed)}</td><td>${num(s.ticks)}</td>
+    <td>${num(s.resists)}</td><td>${pbar(s.resist_pct, 'bad')}</td><td>${num(s.fizzles)}</td><td>${pct(s.fizzle_pct)}</td>
+    <td>${num(s.interrupts)}</td><td>${pct(s.interrupt_pct)}</td><td>${num(s.damage)}</td><td>${s.per_cast == null ? '—' : num(s.per_cast)}</td></tr>`).join('');
+  const tot = `<tr class="tot"><td>All spells</td><td>${num(st.casts)}</td><td>${num(st.landed)}</td><td>${num(st.ticks)}</td><td>${num(st.resists)}</td>
+    <td>${pbar(st.resist_pct, 'bad')}</td><td>${num(st.fizzles)}</td><td>${pct(st.fizzle_pct)}</td><td>${num(st.interrupts)}</td><td>${pct(st.interrupt_pct)}</td><td>${num(st.damage)}</td><td></td></tr>`;
+  const others = d.friends.filter(r => r.name !== 'You' && r.abilities.some(a => a.kind !== 'melee'));
+  return `<h3>Your spells</h3>
+    ${d.spells.length ? `<table class="dp-t"><tr><th>Spell</th><th>Casts</th><th>Landed</th><th>DoT ticks</th><th>Resisted</th><th>Resist %</th><th>Fizzles</th><th>Fizzle %</th><th>Interrupts</th><th>Interrupt %</th><th>Damage</th><th>Dmg / cast</th></tr>${rows}${tot}</table>
+      <p class="hint">Resist % is resists out of spells that reached a target (landed + resisted). Fizzle and interrupt % are out of casts.${st.immune || st.nohold ? ` Also: ${st.immune} immune, ${st.nohold} did not take hold.` : ''}</p>` : '<div class="muted">You didn\'t cast in this fight.</div>'}
+    <div class="dp-two">
+      <div><h4>Resisted by</h4>${d.resisted_by.length ? `<table><tr><th>NPC</th><th>Spell</th><th>Times</th></tr>${d.resisted_by.map(r => r.spells.map((s, i) => `<tr><td>${i ? '' : esc(r.npc)}</td><td>${esc(s.spell)}</td><td>${s.count}</td></tr>`).join('')).join('')}</table>` : '<p class="muted">Nothing resisted.</p>'}</div>
+      <div><h4>Spells you resisted</h4>${d.you_resisted.length ? `<table><tr><th>Spell</th><th>Times</th></tr>${d.you_resisted.map(r => `<tr><td>${esc(r.spell)}</td><td>${r.count}</td></tr>`).join('')}</table>` : '<p class="muted">None.</p>'}</div>
+    </div>
+    ${others.length ? `<h3>Others' spell damage <span class="muted">(only landed hits show in your log)</span></h3><table class="dp-t"><tr><th>Who</th><th>Ability</th><th>Hits</th><th>Damage</th><th>Avg</th><th>Max</th></tr>
+      ${others.map(r => r.abilities.filter(a => a.kind !== 'melee').map(a => `<tr><td>${esc(r.name)}</td><td>${esc(a.name)}</td><td>${num(a.count)}</td><td>${num(a.dmg)}</td><td>${num(a.avg)}</td><td>${num(a.max)}</td></tr>`).join('')).join('')}</table>` : ''}`;
+}
+function deepDefence(d) {
+  if (!d.defence.length) return '<div class="empty">No NPC swings at your side in this fight.</div>';
+  const cols = ['miss', 'dodge', 'parry', 'block', 'riposte', 'absorb', 'invulnerable'].filter(o => d.defence.some(r => r.outcomes.some(x => x.outcome === o)));
+  return `<h3>NPC swings at your side</h3><table class="dp-t"><tr><th>Target</th><th>Swings</th><th>Hit</th><th>Hit %</th>${cols.map(o => `<th>${OUTCOME_LABEL[o]}</th>`).join('')}<th>Avoided %</th></tr>
+    ${d.defence.map(r => { const by = Object.fromEntries(r.outcomes.map(o => [o.outcome, o]));
+      return `<tr class="${r.name === 'You' ? 'you' : ''}"><td>${esc(r.name)}</td><td>${num(r.swings)}</td><td>${num(r.hits)}</td><td>${pbar(r.hit_pct, 'bad')}</td>
+        ${cols.map(o => `<td>${by[o] ? `${num(by[o].count)} <span class="muted">(${by[o].pct}%)</span>` : '—'}</td>`).join('')}
+        <td>${pct(r.hit_pct == null ? null : Math.round(10 * (100 - r.hit_pct)) / 10)}</td></tr>`; }).join('')}</table>`;
+}
+function deepLog(d) {
+  const f = dp.f, ql = f.q.trim().toLowerCase();
+  const who = [...new Set(d.events.flatMap(e => [e.src, e.tgt]).filter(Boolean))].sort();
+  const keep = e => {
+    if (f.type === 'hits' && e.type !== 'hit') return false;
+    if (f.type === 'avoids' && e.type !== 'avoid') return false;
+    if (f.type === 'spells' && e.type !== 'spell') return false;
+    if (['cast', 'resist', 'fizzle', 'interrupt'].includes(f.type) && !(e.type === 'spell' && e.sub === f.type)) return false;
+    if (f.type === 'crits' && !(e.type === 'hit' && e.crit)) return false;
+    if (f.type === 'deaths' && e.type !== 'death') return false;
+    if (f.who && e.src !== f.who && e.tgt !== f.who) return false;
+    if (ql && ![e.src, e.tgt, e.spell, e.kind, e.outcome, e.sub].some(x => x && String(x).toLowerCase().includes(ql))) return false;
+    return true;
+  };
+  const rows = d.events.filter(keep);
+  const SUB = {cast: 'begins casting', resist: 'was resisted', fizzle: 'fizzled', interrupt: 'was interrupted', immune: 'target immune', nohold: 'did not take hold', 'you resisted': 'you resisted it'};
+  const line = e => {
+    if (e.type === 'hit') return `<tr class="${e.side} ${e.crit ? 'crit' : ''}"><td>+${mmss(e.t)}</td><td>${esc(e.src)}</td><td>${esc(e.tgt)}</td><td>${e.spell ? esc(e.spell) : esc(e.kind)}${e.crit ? ' · <b>crit</b>' : ''}</td><td class="amt">${num(e.amt)}</td></tr>`;
+    if (e.type === 'avoid') return `<tr class="${e.side} avoid"><td>+${mmss(e.t)}</td><td>${esc(e.src)}</td><td>${esc(e.tgt)}</td><td>${OUTCOME_LABEL[e.outcome] || esc(e.outcome)}</td><td class="amt">—</td></tr>`;
+    if (e.type === 'spell') return `<tr class="spell ${e.sub === 'resist' || e.sub === 'fizzle' || e.sub === 'interrupt' ? 'bad' : ''}"><td>+${mmss(e.t)}</td><td>${esc(e.src || '')}</td><td>${esc(e.tgt || '')}</td><td>${esc(e.spell || 'spell')} <span class="muted">${SUB[e.sub] || esc(e.sub)}</span></td><td class="amt"></td></tr>`;
+    return `<tr class="death"><td>+${mmss(e.t)}</td><td>${esc(e.src || '')}</td><td>${esc(e.tgt)}</td><td>died</td><td class="amt"></td></tr>`;
+  };
+  const LIMIT = 3000;
+  return `<div class="dp-filters">
+      <select data-dpf="type">${[['all', 'Everything'], ['hits', 'Hits'], ['crits', 'Crits'], ['avoids', 'Misses & avoids'], ['spells', 'All spell messages'], ['cast', 'Casts'], ['resist', 'Resists'], ['fizzle', 'Fizzles'], ['interrupt', 'Interrupts'], ['deaths', 'Deaths']]
+        .map(([v, l]) => `<option value="${v}" ${f.type === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select data-dpf="who"><option value="">Anyone</option>${who.map(w => `<option ${f.who === w ? 'selected' : ''}>${esc(w)}</option>`).join('')}</select>
+      <input data-dpf="q" placeholder="Search spell, name…" value="${esc(f.q)}">
+      <span class="muted">${num(rows.length)} of ${num(d.events.length)} events${rows.length > LIMIT ? ` · showing the first ${LIMIT.toLocaleString()}` : ''}</span></div>
+    <table class="dp-t dp-log"><tr><th>Time</th><th>From</th><th>To</th><th>What</th><th>Damage</th></tr>${rows.slice(0, LIMIT).map(line).join('') || '<tr><td colspan="5" class="muted">Nothing matches.</td></tr>'}</table>`;
+}
 
 // ---------- breakdown drawer ----------
 const OUT_COLORS = {hit: '#5bd38a', miss: '#6b7079', dodge: '#6aa8ff', parry: '#b48cf2', block: '#4fc1b7',

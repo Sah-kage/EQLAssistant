@@ -421,6 +421,12 @@ class FightTracker:
                 return f
         return None
 
+    def deep(self, fid):
+        f = self.latest() if fid == "latest" else self.find(int(fid))
+        if not f:
+            return None
+        return deep_dive(f, self.pets(), self.cfg.get("pet_names", []))
+
     def latest(self):
         return self.current or (self.fights[-1] if self.fights else None)
 
@@ -445,3 +451,171 @@ class FightTracker:
     def clear(self):
         self.fights.clear()
         self.current = None
+
+
+# ---------------------------------------------------------------------------- deep dive
+AVOIDS = ("miss", "dodge", "parry", "block", "riposte", "absorb", "invulnerable")
+SPELL_SUBS = ("cast", "resist", "fizzle", "interrupt", "immune", "nohold", "you resisted")
+
+
+def _pct(a, b):
+    return round(100.0 * a / b, 1) if b else None
+
+
+def _ability_label(kind, spell):
+    if kind == "melee":
+        return "Melee"
+    if spell:
+        return spell + (" (DoT)" if kind == "dot" else "")
+    return {"dot": "DoT (unnamed)", "nonmelee": "Non-melee (unnamed)"}.get(kind, (kind or "Other").capitalize())
+
+
+def deep_dive(f, pets=(), pet_names=()):
+    """Every hit, miss, cast and resist in one fight, with counts and percentages.
+
+    Built from the fight's own event list (each damage line, avoid, spell
+    message and death), plus the per-spell counters kept for you.
+    """
+    known_pets = set(pets) | set(pet_names)
+    dur = f.duration
+    people = {}            # name -> {"side", melee counters, abilities, targets}
+
+    def person(name, side):
+        p = people.get(name)
+        if p is None:
+            p = people[name] = {"name": name, "side": side,
+                                "type": friend_type(name, known_pets) if side == "friend" else "npc",
+                                "dmg": 0, "hits": 0, "crits": 0, "max": 0, "min": None,
+                                "melee": Counter(), "melee_dmg": 0, "melee_max": 0, "melee_crits": 0,
+                                "abilities": {}, "targets": {}, "taken": 0, "avoided": Counter(),
+                                "first": None, "last": None}
+        return p
+
+    events = []
+    deaths = []
+    for (t, side, src, tgt, amt, kind, spell, crit) in f.events:
+        rel = round(t - f.start, 1)
+        if side == "death":
+            deaths.append({"t": rel, "who": tgt, "by": src})
+            events.append({"t": rel, "type": "death", "src": src, "tgt": tgt})
+            continue
+        if side == "spell":
+            events.append({"t": rel, "type": "spell", "sub": kind, "src": src, "tgt": tgt, "spell": spell})
+            continue
+        p = person(src, "friend" if side == "friend" else "npc")
+        p["first"] = t if p["first"] is None else min(p["first"], t)
+        p["last"] = t if p["last"] is None else max(p["last"], t)
+        if amt:                                   # a hit
+            p["dmg"] += amt
+            p["hits"] += 1
+            p["max"] = max(p["max"], amt)
+            p["min"] = amt if p["min"] is None else min(p["min"], amt)
+            if crit:
+                p["crits"] += 1
+            if kind == "melee":
+                p["melee"]["hit"] += 1
+                p["melee_dmg"] += amt
+                p["melee_max"] = max(p["melee_max"], amt)
+                if crit:
+                    p["melee_crits"] += 1
+            label = _ability_label(kind, spell)
+            a = p["abilities"].get(label) or p["abilities"].setdefault(
+                label, {"name": label, "kind": kind, "count": 0, "dmg": 0, "max": 0, "min": None, "crits": 0})
+            a["count"] += 1
+            a["dmg"] += amt
+            a["max"] = max(a["max"], amt)
+            a["min"] = amt if a["min"] is None else min(a["min"], amt)
+            a["crits"] += bool(crit)
+            p["targets"][tgt] = p["targets"].get(tgt, 0) + amt
+            person(tgt, "npc" if side == "friend" else "friend")["taken"] += amt
+            events.append({"t": rel, "type": "hit", "side": side, "src": src, "tgt": tgt, "amt": amt,
+                           "kind": kind, "spell": spell, "crit": bool(crit)})
+        else:                                     # a miss / dodge / parry / ...
+            p["melee"][kind] += 1
+            person(tgt, "npc" if side == "friend" else "friend")["avoided"][kind] += 1
+            events.append({"t": rel, "type": "avoid", "side": side, "src": src, "tgt": tgt, "outcome": kind})
+
+    def finish(p):
+        sw = sum(p["melee"].values())
+        hits = p["melee"]["hit"]
+        melee = None
+        if sw:
+            melee = {"swings": sw, "hits": hits, "hit_pct": _pct(hits, sw), "dmg": p["melee_dmg"],
+                     "avg": round(p["melee_dmg"] / hits) if hits else 0, "max": p["melee_max"],
+                     "crits": p["melee_crits"], "crit_pct": _pct(p["melee_crits"], hits),
+                     "outcomes": [{"outcome": o, "count": p["melee"][o], "pct": _pct(p["melee"][o], sw)}
+                                  for o in ("hit",) + AVOIDS if p["melee"][o]]}
+        abil = sorted(p["abilities"].values(), key=lambda a: -a["dmg"])
+        for a in abil:
+            a["avg"] = round(a["dmg"] / a["count"]) if a["count"] else 0
+            a["pct"] = _pct(a["dmg"], p["dmg"])
+            a["crit_pct"] = _pct(a["crits"], a["count"])
+        av = p["avoided"]
+        received = sum(av.values())
+        active = (p["last"] - p["first"] + 1) if p["first"] is not None else 0
+        return {"name": p["name"], "side": p["side"], "type": p["type"], "dmg": p["dmg"], "hits": p["hits"],
+                "dps": round(p["dmg"] / dur, 1) if dur else 0,
+                "sdps": round(p["dmg"] / max(1.0, active), 1) if active else 0,
+                "avg": round(p["dmg"] / p["hits"]) if p["hits"] else 0, "max": p["max"], "min": p["min"] or 0,
+                "crits": p["crits"], "crit_pct": _pct(p["crits"], p["hits"]),
+                "melee": melee, "abilities": abil, "taken": p["taken"],
+                "targets": [{"name": k, "dmg": v, "pct": _pct(v, p["dmg"])}
+                            for k, v in sorted(p["targets"].items(), key=lambda kv: -kv[1])],
+                "avoided": [{"outcome": o, "count": av[o]} for o in AVOIDS if av[o]],
+                "avoided_total": received}
+
+    rows = [finish(p) for p in people.values()]
+    friends = sorted((r for r in rows if r["side"] == "friend"), key=lambda r: -r["dmg"])
+    npcs = sorted((r for r in rows if r["side"] == "npc"), key=lambda r: (-r["taken"], -r["dmg"]))
+    side_total = sum(r["dmg"] for r in friends) or 0
+    for r in friends:
+        r["share"] = _pct(r["dmg"], side_total)
+    npc_total = sum(r["dmg"] for r in npcs) or 0
+    for r in npcs:
+        r["share"] = _pct(r["dmg"], npc_total)
+
+    # defence: how often NPC swings landed on each of your side, and what stopped the rest
+    defence = []
+    for name, c in sorted(f.defense.items(), key=lambda kv: -sum(kv[1].values())):
+        tot = sum(c.values())
+        defence.append({"name": name, "swings": tot, "hits": c["hit"], "hit_pct": _pct(c["hit"], tot),
+                        "outcomes": [{"outcome": o, "count": c[o], "pct": _pct(c[o], tot)} for o in AVOIDS if c[o]]})
+
+    # your spells
+    spells = []
+    for name, s in sorted(f.spells.items(), key=lambda kv: (-kv[1]["damage"], -kv[1]["casts"])):
+        attempts = s["landed"] + s["resists"]            # casts that reached a target
+        spells.append({"name": name, **s,
+                       "resist_pct": _pct(s["resists"], attempts),
+                       "land_pct": _pct(s["landed"], attempts),
+                       "fizzle_pct": _pct(s["fizzles"], s["casts"]),
+                       "interrupt_pct": _pct(s["interrupts"], s["casts"]),
+                       "per_cast": round(s["damage"] / s["casts"]) if s["casts"] else None})
+    tot = {k: sum(s[k] for s in f.spells.values()) for k in SPELL_KEYS}
+    attempts = tot["landed"] + tot["resists"]
+    spell_totals = dict(tot, resist_pct=_pct(tot["resists"], attempts), land_pct=_pct(tot["landed"], attempts),
+                        fizzle_pct=_pct(tot["fizzles"], tot["casts"]),
+                        interrupt_pct=_pct(tot["interrupts"], tot["casts"]),
+                        immune=f.spell_misc.get("immune", 0), nohold=f.spell_misc.get("nohold", 0))
+    resisted_by = [{"npc": n, "spells": [{"spell": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])],
+                    "total": sum(d.values())} for n, d in sorted(f.resisted_by.items(), key=lambda kv: -sum(kv[1].values()))]
+    you_resisted = [{"spell": k, "count": v} for k, v in sorted(f.you_resisted.items(), key=lambda kv: -kv[1])]
+
+    # damage over time, 5-second buckets, your side vs NPCs
+    step = 5 if dur <= 300 else 10 if dur <= 900 else 30
+    n = int(dur // step) + 1
+    tl_friend, tl_npc = [0] * n, [0] * n
+    for e in events:
+        if e["type"] == "hit":
+            i = min(n - 1, max(0, int(e["t"] // step)))
+            (tl_friend if e["side"] == "friend" else tl_npc)[i] += e["amt"]
+
+    events.sort(key=lambda e: e["t"])            # stable: lines logged in the same second keep their order
+    counts = Counter(e["type"] for e in events)
+    counts.update(("spell:" + e["sub"]) for e in events if e["type"] == "spell")
+    return {"id": f.id, "start": f.start, "duration": round(dur), "done": f.done,
+            "name": max(f.mobs, key=f.mobs.get) if f.mobs else "?",
+            "friends": friends, "npcs": npcs, "defence": defence,
+            "spells": spells, "spell_totals": spell_totals, "resisted_by": resisted_by, "you_resisted": you_resisted,
+            "deaths": deaths, "timeline": {"step": step, "friend": tl_friend, "npc": tl_npc},
+            "counts": dict(counts), "events": events, "events_capped": len(f.events) >= 20000}

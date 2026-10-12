@@ -73,6 +73,12 @@ def make_handler(app):
                 if p == "/api/fight":
                     f = app.tracker(char).get(int(q.get("id", 0))) if char else None
                     return self._json(f or {}, 200 if f else 404)
+                if p == "/api/fight/deep":
+                    try:
+                        f = app.tracker(char).deep(q.get("id", "latest")) if char else None
+                    except ValueError:
+                        f = None
+                    return self._json(f or {}, 200 if f else 404)
                 if p == "/api/quests":
                     return self._json(app.quests.view(char) if char else {"char": None})
                 if p == "/api/factions":

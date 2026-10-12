@@ -339,6 +339,32 @@ class EndToEnd(unittest.TestCase):
         with self.assertRaises(ValueError):
             app.set_overlay("nope", {})
 
+    def test_fight_deep_dive(self):
+        from eqlc.fights import FightTracker
+        tr = FightTracker({"fight_timeout": 10, "min_fight_secs": 0})
+        lines = ["You begin casting Ice Comet.", "You hit a gnoll for 50 points of damage.",
+                 "You try to hit a gnoll, but miss!", "You try to hit a gnoll, but a gnoll parries!",
+                 "a gnoll tries to hit YOU, but YOU dodge!", "a gnoll hits YOU for 10 points of damage.",
+                 "Your target resisted the Ice Comet spell.", "You begin casting Ice Comet.",
+                 "a gnoll was hit by non-melee for 300 points of damage.", "Your spell fizzles!",
+                 "Bobbin slashes a gnoll for 40 points of damage.", "You have slain a gnoll!"]
+        for i, l in enumerate(lines):
+            ev = parse_msg(l)
+            if ev:
+                tr.process(1000 + i, ev)
+        d = tr.deep("latest")
+        you = next(r for r in d["friends"] if r["name"] == "You")
+        self.assertEqual((you["dmg"], you["hits"], you["melee"]["swings"], you["melee"]["hit_pct"]), (350, 2, 3, 33.3))
+        self.assertEqual({o["outcome"]: o["pct"] for o in you["melee"]["outcomes"]}, {"hit": 33.3, "miss": 33.3, "parry": 33.3})
+        self.assertEqual([(a["name"], a["pct"]) for a in you["abilities"]], [("Ice Comet", 85.7), ("Melee", 14.3)])
+        st = d["spell_totals"]
+        self.assertEqual((st["casts"], st["landed"], st["resists"], st["resist_pct"], st["fizzle_pct"]), (2, 1, 1, 50.0, 50.0))
+        self.assertEqual(d["defence"][0]["hit_pct"], 50.0)
+        self.assertEqual(d["resisted_by"][0]["npc"], "a gnoll")
+        self.assertEqual(sum(d["timeline"]["friend"]), 390)
+        self.assertEqual((d["counts"]["hit"], d["counts"]["avoid"], d["counts"]["death"]), (4, 3, 1))
+        self.assertIsNone(tr.deep("999"))
+
     def test_players_npcs_split(self):
         from eqlc.fights import FightTracker
         tr = FightTracker({"fight_timeout": 10, "min_fight_secs": 0})

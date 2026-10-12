@@ -235,6 +235,24 @@ Names aren't case-sensitive, and `*` is a wildcard: `a spiroc *` times every spi
 
 The quest data comes from the EverQuest Legends wiki (eqlwiki.com) and lives in `eqlc/sky_data.py`. If the wiki changes, edit that file and restart the app.
 
+## Fight deep dive
+
+On the DPS tab, pick a fight and click **Deep dive** to see everything in that fight from your log. It updates live while the fight is going.
+
+- **Totals across the top:** damage hits, melee swings with the share that landed, misses and avoids, your casts with fizzle and interrupt %, your resists as a % of spells that reached a target, spells you resisted, and deaths.
+- **Overview:**
+  - A damage-over-time chart, your side against the NPCs.
+  - Everyone on both sides with damage, share, DPS, hits, average, max, crit % and melee hit %.
+  - Click a row for that person's damage by ability (hits, share, average, min, max, crit %), their targets, their melee outcomes, and what stopped the swings aimed at them.
+- **Melee:** every attacker's swings split into hit, miss, dodge, parry, block, riposte and so on, each with its count and %.
+- **Spells:**
+  - Each of your spells with casts, landed, DoT ticks, resisted (and resist %), fizzles, interrupts, damage, and damage per cast.
+  - Which NPCs resisted what, and which NPC spells you resisted.
+- **Defence:** NPC swings at each of your side, with the hit % and what you avoided by type.
+- **Every event:** each hit, miss, cast, resist, fizzle, interrupt and death in time order. Filter by type and by person, or search by spell or name.
+
+The log doesn't show other players' casts or resists, only their damage, so spell rates are for you only.
+
 ## How fights and DPS are measured
 
 - A fight starts at the first damage and ends when every mob you were fighting has died, or after 10 seconds with no damage. The idle time is adjustable in Settings.
