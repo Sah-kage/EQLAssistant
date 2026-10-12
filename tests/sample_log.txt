@@ -1,0 +1,23 @@
+[Sun Oct 11 20:00:00 2026] You have entered Plane of Sky.
+[Sun Oct 11 20:00:05 2026] You slash a thunder spirit for 40 points of damage.
+[Sun Oct 11 20:00:06 2026] You slash a thunder spirit for 60 points of damage.
+[Sun Oct 11 20:00:06 2026] Bobbin hits a thunder spirit for 30 points of damage.
+[Sun Oct 11 20:00:07 2026] a thunder spirit hits YOU for 25 points of damage.
+[Sun Oct 11 20:00:08 2026] You score a critical hit! (120)
+[Sun Oct 11 20:00:08 2026] You slash a thunder spirit for 120 points of damage.
+[Sun Oct 11 20:00:09 2026] a thunder spirit was hit by non-melee for 80 points of damage.
+[Sun Oct 11 20:00:10 2026] a thunder spirit has taken 20 damage from your Engulfing Roots.
+[Sun Oct 11 20:00:14 2026] You have slain a thunder spirit!
+[Sun Oct 11 20:00:15 2026] --You have looted a Wind Rune Meda from a thunder spirit's corpse.--
+[Sun Oct 11 20:01:00 2026] You hit Gorgalosk for 300 points of fire damage by Ignite Blood.
+[Sun Oct 11 20:01:05 2026] You crush Gorgalosk for 100 points of damage.
+[Sun Oct 11 20:01:10 2026] Bobbin slashes Gorgalosk for 200 points of damage.
+[Sun Oct 11 20:01:12 2026] Gorgalosk hits YOU for 150 points of damage.
+[Sun Oct 11 20:01:19 2026] You crush Gorgalosk for 100 points of damage. (Critical)
+[Sun Oct 11 20:01:19 2026] Gorgalosk has been slain by Bobbin!
+[Sun Oct 11 20:01:25 2026] --You have looted a Light Woolen Mask from Gorgalosk's corpse.--
+[Sun Oct 11 20:01:26 2026] --Bobbin has looted a Feathered Cape from Gorgalosk's corpse.--
+[Sun Oct 11 20:02:00 2026] Cilin Spellsinger says, 'Well done, here is your reward.'
+[Sun Oct 11 20:02:00 2026] You receive Mask of Song from Cilin Spellsinger.
+[Sun Oct 11 20:03:00 2026] You pierce a gust of wind for 50 points of damage.
+[Sun Oct 11 20:03:04 2026] You pierce a gust of wind for 50 points of damage.

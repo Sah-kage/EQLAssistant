@@ -1,0 +1,2 @@
+# Optional: gives EQL Assistant its own app window instead of the web browser.
+pywebview>=5

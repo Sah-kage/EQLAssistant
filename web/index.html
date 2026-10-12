@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EQL Assistant</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/icon.png">
+</head>
+<body>
+<header>
+  <div class="brand"><img src="/icon.png" alt="" class="logo">EQL <b>Assistant</b></div>
+  <nav>
+    <button data-tab="parser" class="on">DPS</button>
+    <button data-tab="crawls">Crawls</button>
+    <button data-tab="raids">Raids <span id="raid-badge" class="nbadge dim" hidden></span></button>
+    <button data-tab="timers">Timers <span id="timer-badge" class="nbadge" hidden></span></button>
+    <button data-tab="quests">Class Quests</button>
+    <button data-tab="sky">Plane of Sky</button>
+    <button data-tab="factions">Factions</button>
+    <button data-tab="overlays">Overlays</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <div class="who"><span id="status-dot"></span><select id="charsel"></select></div>
+</header>
+
+<main>
+  <!-- PARSER -->
+  <section id="tab-parser" class="tab on">
+    <div class="kpis">
+      <div class="kpi"><label>Current fight</label><b id="k-now" class="green">—</b><small id="k-now-sub"></small>
+        <div class="btns"><button class="ghost" id="my-breakdown">My breakdown &amp; tips</button></div></div>
+      <div class="kpi"><label id="k-avg-lbl">Last 10 avg</label><b id="k-avg" class="gold">—</b><small id="k-avg-sub"></small></div>
+      <div class="kpi"><label>Best of last 10</label><b id="k-best">—</b><small>&nbsp;</small></div>
+      <div class="kpi"><label>Motes <span id="k-motes-rate" class="muted"></span></label><b id="k-motes" class="sky">0</b>
+        <div id="k-tiers" class="tiers"></div>
+        <small id="k-motes-sub"></small>
+        <div class="btns"><button class="ghost" data-open="motes">Motes window</button></div></div>
+      <div class="kpi"><label>In-game overlays</label>
+        <small>Turn them on or off, resize and fade them on the Overlays tab. Run EQL in borderless windowed mode.</small>
+        <div class="btns"><button class="ghost" data-goto="overlays">Overlay settings</button></div></div>
+    </div>
+    <div class="split">
+      <div class="panel list">
+        <div class="panel-h">Fights <button id="clear-fights" class="ghost">Clear</button></div>
+        <div id="fights"></div>
+      </div>
+      <div class="panel" id="fight-detail"><div class="empty">Pick a fight on the left.</div></div>
+    </div>
+  </section>
+
+  <!-- CRAWLS -->
+  <section id="tab-crawls" class="tab">
+    <div class="split crawls">
+      <div>
+        <div class="panel" id="crawl-now"></div>
+        <div class="panel">
+          <div class="panel-h">Personal bests <span class="muted">completed crawls, by zone &amp; difficulty</span></div>
+          <div id="crawl-bests"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">Crawl history
+          <span class="filters">
+            <select id="crawl-zone"><option value="">All zones</option></select>
+            <label><input type="checkbox" id="crawl-unfinished"> Show not completed</label>
+          </span></div>
+        <div id="crawl-runs"></div>
+        <p class="hint">Duration runs from your first kill in the crawl zone (named by “&lt;zone&gt; is now available to you.”) to the first loot from the Reward Chest. Time spent ported out is included and shown separately. Click a run for details.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- RAIDS -->
+  <section id="tab-raids" class="tab">
+    <div class="raid-top">
+      <div><h2 id="raid-title">Raid bosses this week</h2><p class="muted" id="raid-sub"></p></div>
+      <div class="filters">
+        <span class="seg" id="raid-week"><button data-week="0" class="on">This week</button><button data-week="1">Last week</button><button data-week="2">2 weeks ago</button></span>
+        <span id="raid-eras"></span>
+        <button class="ghost" id="raid-add">+ Add boss</button>
+      </div>
+    </div>
+    <div id="raid-groups" class="raid-groups"></div>
+    <div class="panel"><div class="panel-h">Kills this week</div><div id="raid-log"></div>
+      <p class="hint">A kill counts when your log shows the boss die (“You have slain…”, “…has been slain by…”), so you need to be in the zone. Lockouts reset Tuesdays at 8am Pacific. After a kill, a raid can be cleared again every 18 hours for one extra loot piece per boss.</p></div>
+  </section>
+
+  <!-- QUESTS -->
+  <section id="tab-quests" class="tab">
+    <div class="split quests">
+      <div class="side">
+        <div class="panel">
+          <div class="panel-h">My classes</div>
+          <div id="q-classes" class="chips"></div>
+          <p class="hint">Tick the classes you play. EQL lets you unlock more than one.</p>
+          <label class="chk"><input type="radio" name="q-scope" value="mine" checked> Show my classes</label>
+          <label class="chk" style="margin-top:4px"><input type="radio" name="q-scope" value="all"> Show all classes</label>
+          <label class="chk"><input type="checkbox" id="q-hide-done"> Hide completed quests</label>
+          <label class="chk"><input type="checkbox" id="q-hide-kunark"> Hide quests not available pre-Kunark</label>
+          <select id="q-kind" style="width:100%;margin-top:10px">
+            <option value="">All quest types</option><option value="spell">Spells</option><option value="weapon">Weapons</option>
+            <option value="armor">Armour sets</option><option value="item">Other items</option><option value="epic">Epics</option>
+          </select>
+          <input id="q-search" placeholder="Search quests or items…" style="width:100%;margin-top:12px">
+        </div>
+        <div class="panel">
+          <div class="panel-h">Add more quests</div>
+          <div class="btns"><button class="primary" id="q-import">Import from EQL wiki</button><button class="ghost" id="q-add">Add by hand</button></div>
+          <p class="hint">Paste any quest page from eqlwiki.com and the app pulls in its item list. Browse each class's quests: <span id="q-cats"></span></p>
+        </div>
+        <div class="panel">
+          <div class="panel-h">How items tick off</div>
+          <p class="hint" style="margin:0">Items you loot or receive tick themselves. <span id="q-inv"></span> Ground pick-ups, combines and hand-ins usually don't show in the log, so tick those yourself.</p>
+        </div>
+      </div>
+      <div id="q-list" class="qlist"></div>
+    </div>
+  </section>
+
+  <!-- FACTIONS -->
+  <section id="tab-factions" class="tab">
+    <div class="split factions">
+      <div class="panel">
+        <div class="panel-h">Faction changes <input id="f-search" placeholder="Filter…" style="width:200px"></div>
+        <div id="f-table"></div>
+        <p class="hint">The log only shows changes (“…has been adjusted by -3”), not your absolute standing. Click <b>Set</b> and enter a faction's current value once (from the in-game faction window or a faction calculator). The app then keeps an estimated value and standing from there. Standing names use classic EQ thresholds.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-h">Last /consider <span class="muted">how NPCs see you</span></div>
+        <input id="c-search" placeholder="Filter NPCs…" style="width:100%;margin-bottom:8px">
+        <div id="c-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TIMERS -->
+  <section id="tab-timers" class="tab">
+    <div class="split timers">
+      <div>
+        <div class="panel">
+          <div class="panel-h">Active timers <button id="clear-timers" class="ghost">Clear all</button></div>
+          <div id="active-timers"></div>
+          <div class="start-row">
+            <input id="t-mob" list="mob-names" placeholder="Mob name">
+            <input id="t-min" type="number" min="0" step="0.5" placeholder="min" title="Minutes (leave blank to use the rule)">
+            <button id="t-start" class="primary">Start now</button>
+          </div>
+          <p class="hint">Timers start by themselves when a mob from your list dies in the log. Use “Start now” for a kill you missed, or a mob that isn't in your list (enter minutes).</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h">Respawn list <span class="muted">which mobs to time</span></div>
+        <table class="rules"><thead><tr><th>Mob name</th><th>Respawn (min)</th><th title="Extra minutes the spawn can be late. Shows a spawn window instead of a single time.">± Window (min)</th><th>Zone (optional)</th><th></th></tr></thead>
+          <tbody id="rules"></tbody></table>
+        <div class="btns"><button id="add-rule" class="ghost">+ Add mob</button><button id="save-rules" class="primary">Save list</button><span id="rules-saved" class="muted"></span></div>
+        <p class="hint">Names aren't case-sensitive. Use <code>*</code> as a wildcard, e.g. <code>a spiroc *</code>. Zone is matched against the zone name in your log (e.g. <code>Plane of Sky</code>) and can be left blank.</p>
+        <h3>Recently killed</h3>
+        <div id="recent-kills" class="chips"></div>
+      </div>
+    </div>
+    <datalist id="mob-names"></datalist>
+  </section>
+
+  <!-- SKY -->
+  <section id="tab-sky" class="tab">
+    <div class="sky-top">
+      <div><h2>Plane of Sky — class unlocks</h2>
+        <p class="muted" id="sky-sum"></p></div>
+      <div class="filters">
+        <label><input type="checkbox" id="hide-done"> Hide completed classes</label>
+        <label><input type="checkbox" id="only-ready"> Only quests ready to hand in</label>
+      </div>
+    </div>
+    <div class="split sky">
+      <div id="classes" class="classes"></div>
+      <div class="side">
+        <div class="panel">
+          <div class="panel-h">Still needed <span class="muted">(remaining quests)</span></div>
+          <div class="seg"><button data-src="all" class="on">All</button><button data-src="boss">Boss drops</button><button data-src="rune">Wind runes</button></div>
+          <div id="shopping"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">Your Sky drops</div>
+          <div id="drops"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h">Group/raid Sky loot seen</div>
+          <div id="gdrops"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-overlays" class="tab">
+    <div class="panel narrow ov-intro">
+      <h2>Overlays</h2>
+      <p class="muted">Always-on-top windows that sit over EverQuest Legends. Run the game in <b>borderless windowed</b> mode so they stay visible.
+        Drag a window to move it, drag its bottom-right corner (or Ctrl + mouse wheel) to resize it, and right-click it for the same options as here.
+        An overlay that's on opens again next time you start the app.</p>
+    </div>
+    <div id="ov-cards" class="ov-cards"></div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <div class="panel narrow">
+      <h2>Settings</h2>
+      <p class="muted" id="set-status"></p>
+      <label class="f"><span>EverQuest Legends <code>Logs</code> folder</span>
+        <span class="pick"><input id="s-log_dir" placeholder="C:\...\EverQuest Legends\Logs">
+        <button id="browse" class="ghost" type="button" hidden>Browse…</button></span></label>
+      <p class="hint">In game type <code>/log on</code>. Files look like <code>eqlog_Name_server.txt</code>.
+        For exact item counts type <code>/outputfile inventory</code> now and then — the app picks it up automatically.</p>
+      <label class="f">Character to show <select id="s-character"><option value="">Follow active log</option></select></label>
+      <div class="grid2">
+        <label class="f">Fight ends after idle (s)<input id="s-fight_timeout" type="number" min="3" max="60"></label>
+        <label class="f">Ignore fights shorter than (s)<input id="s-min_fight_secs" type="number" min="0" max="60"></label>
+        <label class="f">Average over last N fights<input id="s-avg_fights" type="number" min="1" max="100"></label>
+        <label class="f">Backfill on start (MB of log)<input id="s-backfill_mb" type="number" min="0" max="200"></label>
+      </div>
+      <div class="btns"><button class="ghost" id="rescan-crawls" type="button">Rescan logs for past dungeon crawls</button><span class="muted" id="rescan-status"></span></div>
+      <label class="chk"><input id="s-include_pets" type="checkbox"> Count my pet's damage as mine</label>
+      <label class="f">Pet name(s), comma separated<input id="s-pet_names" placeholder="Gobaner, Kabober"></label>
+      <button id="save" class="primary">Save</button> <span id="saved" class="muted"></span>
+      <p class="hint" id="data-dir"></p>
+      <hr>
+      <button id="quit" class="ghost danger">Quit EQL Assistant</button>
+      <span class="hint">Closes the app and the in-game overlay.</span>
+    </div>
+  </section>
+</main>
+<div id="modal-bg" hidden></div>
+<div id="modal" hidden><div id="modal-body"></div></div>
+<div id="drawer-bg" hidden></div>
+<aside id="drawer" hidden>
+  <div class="dr-h">
+    <div><h2 id="dr-name">—</h2><div class="muted" id="dr-sub"></div></div>
+    <span class="seg" id="dr-scope"><button data-scope="fight" class="on">This fight</button><button data-scope="recent">Last 10 fights</button></span>
+    <button class="ghost" id="dr-close" title="Close (Esc)">✕</button>
+  </div>
+  <div id="dr-body"></div>
+</aside>
+<script src="/app.js"></script>
+</body>
+</html>

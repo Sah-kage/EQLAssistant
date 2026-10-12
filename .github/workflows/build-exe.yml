@@ -1,0 +1,65 @@
+# Builds EQLAssistant.exe on a Windows machine on GitHub.
+#
+#  - Every push: the .exe is attached to the run (Actions tab -> the run -> Artifacts).
+#  - Push a tag like v1.0.0: a GitHub Release is created with EQLAssistant.exe
+#    and its SHA-256 checksum, ready for people to download.
+#  - Or run it by hand: Actions -> Build EXE -> Run workflow.
+name: Build EXE
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run tests
+        run: python -m unittest discover tests
+      - name: Install build tools
+        run: python -m pip install --upgrade pip pyinstaller pywebview
+      - name: Stamp version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          (Get-Content eqlc/__init__.py) -replace '__version__ = ".*?"', "__version__ = `"$v`"" | Set-Content eqlc/__init__.py
+          Get-Content eqlc/__init__.py
+      - name: Build EQLAssistant.exe
+        run: >
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name EQLAssistant
+          --icon assets/icon.ico --add-data "web;web" --add-data "assets/icon.ico;assets"
+          --hidden-import overlay_window --collect-submodules eqlc main.py
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist/EQLAssistant.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  EQLAssistant.exe" | Set-Content -Encoding ascii dist/EQLAssistant.exe.sha256
+          Get-Content dist/EQLAssistant.exe.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EQLAssistant
+          path: |
+            dist/EQLAssistant.exe
+            dist/EQLAssistant.exe.sha256
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/EQLAssistant.exe
+            dist/EQLAssistant.exe.sha256
+          generate_release_notes: true
+          body: |
+            ## Download
+            Download **EQLAssistant.exe** below and double-click it. No install needed.
+
+            - Windows may show "Windows protected your PC" because the file isn't code-signed. Click **More info → Run anyway**.
+            - In EverQuest Legends, type `/log on`, then pick your `Logs` folder in the app's **Settings**.
+            - Run the game in **borderless windowed** mode so the overlays stay on top.
