@@ -138,6 +138,50 @@ class EndToEnd(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(self.app.sky.char("Tester")["done"][qid]["how"], "history")
 
+    def test_inventory_export_import(self):
+        from eqlc.inventory import parse, char_from_filename, base_name
+        text = ("Location\tName\tID\tCount\tSlots\n"
+                "Primary\tAldryn, Blade of the Ocean +9\t27708\t1\t10\n"
+                "Primary-Slot8\tSoulFire (Exaltation)\t5504\t1\t10\n"
+                "General 1-Slot3\tMystic Ash\t14246\t57\t10\n"
+                "General 2-Slot12\tStar Ruby\t10032\t13\t10\n"
+                "Bank13-Slot20\tGlowing Sword Hilt\t12197\t1\t10\n"
+                "Bank13-Slot30\tGlowing Sword Hilt\t12197\t1\t10\n"
+                "Bank13-Slot21\tEmpty\t0\t0\t0\n"
+                "General 4-Slot13\tTear of Quellious\t20805\t1\t10\n"
+                "\n"
+                "KeyRing\tName\tID\t\n"
+                "Augmentation\tLute (Exaltation)\t13011\n"
+                "Equipment\tWu's Fist of Mastery +7\t27715\n"
+                "Equipment\tSoulFire +2\t5504\n")
+        inv = parse(text)
+        self.assertEqual(inv["counts"]["Glowing Sword Hilt"], 2)
+        self.assertEqual(inv["counts"]["Mystic Ash"], 57)
+        self.assertNotIn("SoulFire", inv["counts"])                 # augment / key ring: owned, not hand-in-able
+        self.assertIn("SoulFire", inv["owned"])
+        self.assertEqual(inv["where"]["Glowing Sword Hilt"], ["Bank"])
+        self.assertEqual(inv["where"]["SoulFire"], ["Key ring", "Worn"])
+        self.assertEqual((char_from_filename("Sahkage_rivervale-Inventory.txt"), base_name("Windstriker +10")),
+                         ("Sahkage", "Windstriker"))
+        r = self.app.import_inventory(text, "Tester_legends-Inventory.txt", mtime=1000)
+        self.assertEqual(r["char"], "Tester")
+        from eqlc.sky import QUESTS
+        names = {QUESTS[q]["name"] for q in r["sky_ticked"]}
+        self.assertTrue({"Test of Sacrifice", "Test of Fists"} <= names)     # Aldryn (worn) + Wu's Fist (key ring)
+        v = {q["id"]: q for q in self.app.quests.view("Tester")["quests"]}
+        self.assertTrue(v["pal-soulfire"]["done"])                             # SoulFire on the key ring
+        hilt = next(i for i in v["pal-soulfire"]["items"] if i["n"] == "Glowing Sword Hilt")
+        self.assertEqual((hilt["held"], hilt["where"]), (2, ["Bank"]))
+        with self.assertRaises(ValueError):
+            self.app.import_inventory("not an export", "x.txt", char="Tester")
+
+    def test_sky_data_is_eqlwiki(self):
+        from eqlc import sky_data
+        self.assertEqual(len(sky_data.CLASSES), 16)
+        self.assertEqual([t[0] for t in sky_data.CLASSES["Beastlord"][2]],
+                         ["Test of Aviak", "Test of Azarack", "Test of Claw", "Test of Harpy", "Test of Wind"])
+        self.assertTrue(all(u.startswith("https://eqlwiki.com/") for u in sky_data.PAGES.values()))
+
     def test_incremental_and_inventory(self):
         self.app.poll()
         path = os.path.join(self.logs, "eqlog_Tester_legends.txt")
@@ -217,6 +261,40 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(os.path.basename(d), "EQLAssistant")
         self.assertTrue(os.path.exists(os.path.join(d, "state.json")))
         self.assertFalse(os.path.exists(os.path.join(base, "EQLCompanion")))
+
+    def test_race_unlocks(self):
+        from eqlc.factions import Factions
+        from eqlc.races import Races, fkey
+        from eqlc import races_data
+        self.assertEqual(len(races_data.RACES), 15)
+        for r in races_data.RACES:
+            self.assertTrue(r["wiki"].startswith("https://eqlwiki.com/"), r["name"])
+        self.assertEqual(fkey("The Freeport Militia"), fkey("Freeport Militia"))
+        self.assertEqual(fkey("King Ak'Anon (Faction)"), fkey("King Ak`Anon"))
+        st = {}
+        fa = Factions(st)
+        races = Races(st, fa)
+        for who, f in [("A", "Coalition of Tradefolk"), ("B", "Freeport Militia"), ("A", "Knights of Truth"),
+                       ("A", "Da Bashers")]:
+            fa.process(who, 100, parse_msg(f"Your faction standing with {f} could not possibly get any better."))
+        fa.process("A", 101, parse_msg("Your faction standing with Grobb Merchants has been adjusted by 5."))
+        v = {r["name"]: r for r in races.view("A")["races"]}
+        self.assertTrue(v["Human"]["unlocked"])                       # Freeport set, maxed across two characters
+        self.assertEqual(v["Human"]["how"], "factions maxed")
+        self.assertTrue(v["Half-Elf"]["unlocked"])                    # via Human
+        self.assertFalse(v["Troll"]["unlocked"])
+        self.assertEqual(v["Troll"]["progress"], [1, 3])
+        gm = next(q for q in v["Troll"]["groups"][0]["reqs"] if q["faction"] == "Grobb Merchants")
+        self.assertEqual((gm["done"], gm["seen"], gm["net"]), (False, True, 5))
+        # Kerran: task steps
+        for s in [s[0] for s in races_data.RACES[11]["unlock"]["task"]["steps"]]:
+            races.set_step(s, True)
+        v = {r["name"]: r for r in races.view("A")["races"]}
+        self.assertEqual((v["Kerran"]["unlocked"], v["Kerran"]["how"]), (True, "task done"))
+        races.set_unlocked("Ogre", True)
+        self.assertEqual(races.view("A")["races"][12]["how"], "manual")
+        with self.assertRaises(ValueError):
+            races.set_unlocked("Vah Shir", True)
 
     def test_overlay_settings(self):
         app = self.app

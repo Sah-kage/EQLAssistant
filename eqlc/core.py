@@ -13,6 +13,7 @@ from .crawls import Crawls
 from .factions import Factions
 from .quests import Quests
 from .raids import Raids
+from .races import Races
 from .parser import parse_line
 from .sky import SkyTracker, REWARD_RE as _sky_reward_re, reward_in_line
 
@@ -118,6 +119,7 @@ class App:
         self.factions = Factions(self.state)
         self.raids = Raids(self.state, self.cfg)
         self.quests = Quests(self.state, self.sky)
+        self.races = Races(self.state, self.factions)
         self.zone_info = {}
         self.state.setdefault("crawl_scanned", {})
         self.state.setdefault("history_scan", {})
@@ -370,6 +372,23 @@ class App:
                 info = self.files.get(p)
                 self.scan_history(p, m.group("char"), info["sky_from"] if info else None, ("crawls", "raids"))
 
+    def import_inventory(self, text, filename="", char=None, mtime=None):
+        """An inventory export the player picked in the app (Import inventory...)."""
+        from .inventory import char_from_filename
+        char = char_from_filename(filename) or char or self.char()
+        if not char:
+            raise ValueError("pick a character first (or keep the file's name, e.g. Name_server-Inventory.txt)")
+        if "\t" not in text:
+            raise ValueError("that doesn't look like an inventory export (expected tab-separated lines)")
+        known = {c.lower(): c for c in set(self.sky.characters()) | set(self.trackers) |
+                 {i["char"] for i in self.files.values()}}
+        char = known.get(char.lower(), char)
+        with self.lock:
+            res = self.sky.load_inventory_text(char, text, mtime, filename or "imported file")
+            self.quests.dirty = True
+        self.save_state(force=True)
+        return res
+
     def _check_inventory(self, char, log_path):
         root = os.path.dirname(os.path.dirname(log_path))
         for p in glob.glob(os.path.join(root, f"{char}_*-Inventory.txt")) + \
@@ -414,7 +433,7 @@ class App:
     def save_state(self, force=False):
         self.timers.prune()
         dirty = (self.sky.dirty or self.motes.dirty or self.timers.dirty or self.crawls.dirty or
-                 self.factions.dirty or self.raids.dirty or self.quests.dirty)
+                 self.factions.dirty or self.raids.dirty or self.quests.dirty or self.races.dirty)
         if force or (dirty and time.time() - self._last_save > 5):
             with self.lock:
                 _save(self.state_path, self.state)
@@ -422,7 +441,7 @@ class App:
                 self.motes.dirty = False
                 self.timers.dirty = False
                 self.crawls.dirty = False
-                self.factions.dirty = self.raids.dirty = self.quests.dirty = False
+                self.factions.dirty = self.raids.dirty = self.quests.dirty = self.races.dirty = False
             self._last_save = time.time()
 
     def run(self):

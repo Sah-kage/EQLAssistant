@@ -176,7 +176,7 @@ async function refreshSky() {
     if (!d || !d.char) { $('#classes').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
     const unlocked = d.classes.filter(c => c.unlocked).length;
     $('#sky-sum').textContent = `${d.char}: ${d.done}/${d.total} tests done · ${unlocked}/${d.classes.length} classes unlocked` +
-      (d.inventory_time ? ` · inventory export ${dt(d.inventory_time)}` : ' · tip: /outputfile inventory for exact counts');
+      (d.inventory ? ` · inventory: ${d.inventory.source}, ${dt(d.inventory.t)}` : ' · tip: /outputfile inventory, then Import inventory…');
     const hideDone = $('#hide-done').checked, onlyReady = $('#only-ready').checked;
     $('#classes').innerHTML = d.classes.filter(c => !(hideDone && c.unlocked)).map(c => {
       const qs = c.quests.filter(x => !onlyReady || x.ready);
@@ -191,9 +191,9 @@ async function refreshSky() {
             <input type="checkbox" data-q="${esc(x.id)}" ${x.done ? 'checked' : ''} title="Mark turned in">
             <div class="t">${esc(x.name)} <span class="rw">→ ${esc(x.reward)}</span>
               ${x.ready ? '<span class="tag">READY TO TURN IN</span>' : ''}${x.how && x.how !== 'manual' ? `<span class="tag muted">(${{log: 'reward seen in log', history: 'reward found in older logs', inventory: 'reward in inventory'}[x.how] || x.how})</span>` : ''}</div>
-            <div class="its">${x.items.map(i => `<span class="it ${i.held ? 'have' : ''}" title="${esc(i.source)}">${esc(i.name)}${i.held > 1 ? ` <small>×${i.held}</small>` : ''}</span>`).join('')}</div>
+            <div class="its">${x.items.map(i => `<span class="it ${i.held ? 'have' : ''}" title="${esc(i.source)}${i.where && i.where.length ? ' · you have it: ' + esc(i.where.join(', ')) : ''}">${esc(i.name)}${i.held > 1 ? ` <small>×${i.held}</small>` : ''}</span>`).join('')}</div>
           </div>`).join('')}
-          <div class="cls-f"><span>Say “${esc(c.quests[0].trigger)}” etc. to ${esc(c.npc)}</span>
+          <div class="cls-f"><span>Say “${esc(c.quests[0].trigger)}” etc. to ${esc(c.npc)}${c.wiki ? ` · <a href="${esc(c.wiki)}" target="_blank" rel="noopener">EQLWiki ↗</a>` : ''}</span>
             <label><input type="checkbox" data-unlock="${esc(c.name)}" ${c.manual_unlock ? 'checked' : ''}> unlocked via token</label></div>
         </div></div>`;
     }).join('');
@@ -503,6 +503,7 @@ async function refreshQuests(force) {
   });
   $('#q-cats').innerHTML = Object.entries(d.categories).map(([c, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(c)}</a>`).join(' · ');
   $('#q-inv').textContent = d.has_inventory ? 'Counts use your latest inventory export.' : 'Type /outputfile inventory in game for exact counts.';
+  $('#q-invinfo').innerHTML = d.inventory ? `Using <b>${esc(d.inventory.source)}</b> from ${dt(d.inventory.t)}: ${d.inventory.items.toLocaleString()} items. Loot since then is added on top.` : 'No inventory export yet for this character.';
   renderQuests();
 }
 function renderQuests() {
@@ -530,7 +531,7 @@ function renderQuests() {
       return head + `<div class="qi ${i.ok ? 'ok' : ''}">
         <input type="checkbox" data-qt="${esc(x.id)}" data-idx="${i.idx}" ${i.manual ? 'checked' : ''} title="${i.ok && !i.manual ? 'You hold this (from loot / inventory). Tick to mark it done regardless.' : 'Tick when you have it or have used it'}">
         <span class="n">${esc(i.n)}${i.how ? `<span class="how">${esc(HOW[i.how] || i.how)}</span>` : ''}${i.u ? '<span class="warn-u" title="Unverified on the wiki">⚠ unverified</span>' : ''}</span>
-        <span class="cnt" title="${i.held ? 'You hold ' + i.held : ''}">${i.ok && !i.manual && i.held ? '✓ ' : ''}${cnt}</span>
+        <span class="cnt" title="${i.held ? 'You hold ' + i.held + (i.where && i.where.length ? ' (' + i.where.join(', ') + ')' : '') : (i.where && i.where.length ? 'In ' + i.where.join(', ') : '')}">${i.ok && !i.manual && i.held ? '✓ ' : ''}${cnt}</span>
         ${i.src ? `<span class="src">${esc(i.src)}</span>` : ''}</div>`;
     }).join('');
     return `<div class="qc ${x.done ? 'done' : ''} ${open ? '' : 'collapsed'}" data-q="${esc(x.id)}">
@@ -754,6 +755,65 @@ $('#t-start').onclick = async () => {
 };
 $('#clear-timers').onclick = async () => { if (confirm('Remove all running timers?')) { await post('/api/timers/remove', {}); refreshTimers(); } };
 
+// ---------- races ----------
+let raceData = null;
+async function refreshRaces(force) {
+  const d = await get('/api/races?' + q());
+  if (!d) return;
+  const sig = JSON.stringify(d);
+  if (!force && sig === refreshRaces.sig) return;
+  refreshRaces.sig = sig; raceData = d;
+  $('#race-sum').textContent = `· ${d.unlocked}/${d.total} unlocked`;
+  $('#race-guide').href = d.guide;
+  renderRaces();
+}
+function renderRaces() {
+  const d = raceData; if (!d) return;
+  const hide = $('#race-hide').checked;
+  const reqHtml = r => {
+    const st = r.done ? `<span class="ok">✓ maxed${r.maxed_by.length ? ' by ' + esc(r.maxed_by.join(', ')) : ''}</span>`
+      : r.tier ? `<span>${esc(r.tier)}${r.estimate != null ? ` (~${r.estimate})` : ''}</span>`
+      : r.seen ? `<span class="muted">${r.net > 0 ? '+' : ''}${r.net ?? 0} from your logs</span>`
+      : '<span class="muted">no changes seen yet</span>';
+    return `<div class="rq ${r.done ? 'done' : ''}"><span class="f">${esc(r.faction)}</span>${st}</div>`;
+  };
+  $('#race-cards').innerHTML = d.races.filter(r => !(hide && r.unlocked)).map(r => {
+    const [a, b] = r.progress;
+    let body = '';
+    if (r.groups.length) body = r.groups.map(g => `${g.label ? `<div class="race-grp">${esc(g.label)} <span class="muted">${g.done}/${g.total}</span></div>` : ''}${g.reqs.map(reqHtml).join('')}`).join('');
+    if (r.steps) body = `<div class="race-grp"><a href="${esc(r.task.wiki)}" target="_blank" rel="noopener">${esc(r.task.name)} ↗</a> <span class="muted">${a}/${b}</span></div>
+      <p class="hint" style="margin:2px 0 6px">${esc(r.task.start)}. ${esc(r.task.note)}</p>` +
+      r.steps.map(s => `<label class="rs ${s.done ? 'done' : ''}"><input type="checkbox" data-rstep="${esc(s.name)}" ${s.done ? 'checked' : ''}><span><b>${esc(s.name)}</b> <span class="muted">${esc(s.info)}</span></span></label>`).join('');
+    if (r.needs_race) body = `<div class="rq ${r.unlocked ? 'done' : ''}"><span class="f">Unlock ${r.needs_race.map(esc).join(' or ')}</span>${r.unlocked ? '<span class="ok">✓</span>' : ''}</div>`;
+    return `<div class="panel race ${r.unlocked ? 'unl' : ''}">
+      <div class="race-h"><a class="rn" href="${esc(r.wiki)}" target="_blank" rel="noopener">${esc(r.name)}</a>
+        ${r.unlocked ? `<span class="badge">UNLOCKED</span>` : `<span class="prog"><i style="width:${b ? 100 * a / b : 0}%"></i></span><span class="cnt">${a}/${b}</span>`}</div>
+      <div class="race-meta"><span class="city">${esc(r.city)}</span>${r.classes.map(c => `<span class="clsb">${esc(c)}</span>`).join('')}</div>
+      ${body}
+      ${r.tip ? `<p class="hint race-tip">${esc(r.tip)}</p>` : ''}
+      <div class="race-f"><label class="chk" style="margin:0"><input type="checkbox" data-runl="${esc(r.name)}" ${r.how === 'manual' ? 'checked' : ''}> Unlocked <span class="muted">(started as it / token)</span></label>
+        ${r.unlocked && r.how !== 'manual' ? `<span class="muted">${esc(r.how)}</span>` : ''}</div>
+    </div>`;
+  }).join('') || '<div class="panel"><div class="empty">Every race is unlocked.</div></div>';
+  $$('[data-runl]').forEach(c => c.onchange = async () => { await post('/api/races/unlock', {race: c.dataset.runl, on: c.checked}); refreshRaces(true); });
+  $$('[data-rstep]').forEach(c => c.onchange = async () => { await post('/api/races/step', {step: c.dataset.rstep, on: c.checked}); refreshRaces(true); });
+}
+$('#race-hide').onchange = renderRaces;
+
+// ---------- inventory import ----------
+let invChar = null;
+$$('[data-inv-import]').forEach(b => b.onclick = () => { invChar = char; $('#inv-file').value = ''; $('#inv-file').click(); });
+$('#inv-file').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const text = await f.text();
+  const r = await post('/api/inventory/import', {text, filename: f.name, char: invChar, mtime: f.lastModified});
+  if (!r || !r.ok) { alert((r && r.error) || 'Could not read that file'); return; }
+  const n = (r.sky_ticked || []).length;
+  alert(`Imported ${r.items.toLocaleString()} items for ${r.char}.` + (n ? `\n${n} Plane of Sky test${n === 1 ? '' : 's'} ticked from rewards you own.` : ''));
+  if (tab === 'sky') refreshSky(); else refreshQuests(true);
+};
+
 // ---------- overlays ----------
 const OV_INFO = {
   dps: {name: 'DPS overlay', desc: 'Current fight DPS, last-10 average, a mini chart, the dungeon crawl timer and respawn timers. Double-click it for your fight breakdown.'},
@@ -858,6 +918,7 @@ async function refresh() {
     if (tab === 'raids' && (n % 2 === 0 || !$('#raid-groups').innerHTML)) await refreshRaids();
     if (tab === 'quests' && (n % 5 === 0 || !$('#q-list').innerHTML)) await refreshQuests();
     if (tab === 'factions' && (n % 3 === 0 || !$('#f-table').innerHTML)) await refreshFactions();
+    if (tab === 'races' && (n % 3 === 0 || !$('#race-cards').innerHTML)) await refreshRaces();
     if (tab === 'sky' && (n % 4 === 0 || !$('#classes').innerHTML)) await refreshSky();
     if (n % 4 === 0 || tab === 'settings') await refreshSettings();
   } catch (e) { $('#status-dot').classList.remove('ok'); $('#status-dot').title = 'app not reachable'; }

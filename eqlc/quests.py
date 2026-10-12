@@ -9,6 +9,7 @@ Every item you loot or receive is recorded, so quests you add later still see
 items you picked up earlier.
 """
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -138,6 +139,9 @@ class Quests:
     def view(self, char):
         c = self.char(char)
         held, has_inv = self.held(char)
+        inv = self.sky.char(char).get("inventory") if char in self.sky.s else None
+        owned = {_k(k) for k in (inv or {}).get("owned", [])}
+        where = {_k(k): v for k, v in ((inv or {}).get("where") or {}).items()}
         out = []
         for q in self.all_quests():
             ticks = set(c["ticks"].get(q["id"], []))
@@ -149,8 +153,9 @@ class Quests:
                 manual = i in ticks
                 ok = manual or h >= need
                 got += ok
-                items.append(dict(it, idx=i, held=h, manual=manual, ok=ok))
-            reward_seen = bool(q.get("reward")) and held.get(_k(q["reward"]), 0) > 0
+                items.append(dict(it, idx=i, held=h, manual=manual, ok=ok, where=where.get(_k(it["n"]), [])))
+            rk = _k(q.get("reward", ""))
+            reward_seen = bool(rk) and (held.get(rk, 0) > 0 or rk in owned)
             done = q["id"] in c["done"] or reward_seen
             out.append({"id": q["id"], "name": q["name"], "cls": q["cls"], "kind": q.get("kind", ""),
                         "reward": q.get("reward", ""), "giver": q.get("giver", ""), "level": q.get("level", ""),
@@ -159,8 +164,15 @@ class Quests:
                         "items": items, "got": got, "total": len(items), "done": done,
                         "done_how": "manual" if q["id"] in c["done"] else ("reward seen" if reward_seen else None)})
         return {"char": char, "quests": out, "classes": D.CLASSES, "my_classes": c["classes"],
-                "has_inventory": has_inv,
+                "has_inventory": has_inv, "inventory": _inv_info(inv),
                 "categories": {cl: D.class_category(cl) for cl in D.CLASSES}}
+
+
+def _inv_info(inv):
+    if not inv:
+        return None
+    return {"t": inv["t"], "source": os.path.basename(inv.get("path") or "") or "imported file",
+            "items": inv.get("items") or sum(inv["counts"].values()), "distinct": len(inv.get("owned") or inv["counts"])}
 
 
 # ---------------------------------------------------------------------------- wiki import

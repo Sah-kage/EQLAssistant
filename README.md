@@ -20,7 +20,9 @@ It only reads the log file the game already writes. No injection, no memory read
   - **NPCs**: what each mob took, what it dealt and who it hit most.
   - A **combat log** for each fight, filterable to All, Players & group, or NPCs. It includes misses, dodges, parries, blocks, ripostes, and your spell casts, resists, fizzles and interrupts.
   - **Click any row** (you, a groupmate, or an NPC) for a full breakdown with improvement suggestions. Double-clicking the in-game DPS overlay opens your own breakdown for the latest fight.
-- **Plane of Sky tracker**: all 95 class tests across the 16 classes, grouped by class unlock.
+- **Plane of Sky tracker**: all 95 class tests across the 16 classes, grouped by class unlock, taken only from each class's "Plane of Sky Tests" page on EQLWiki.
+- **Race unlocks**: all 15 races and what unlocks each one (from EQLWiki), with your faction progress filled in from your logs.
+- **Inventory import**: read your `/outputfile inventory` export to tick quest items and finished tests.
   - Quest items and wind runes you've looted, per character.
   - Tests turned in, and tests still to do, with a progress bar per class.
   - Tests you can hand in right now are flagged **READY TO TURN IN**.
@@ -173,6 +175,30 @@ Tick the classes you play to filter the list. You can also filter by type (spell
 
 Items you looted before adding a quest still count.
 
+## Inventory export
+
+In game, type `/outputfile inventory`. EQL writes `Name_server-Inventory.txt` to its game folder (next to the `Logs` folder). The app picks it up automatically, or use **Import inventory…** on the Class Quests or Plane of Sky tab to load the file from anywhere.
+
+- **Everything counts:** bags, bank, worn items and the key ring.
+- **Upgraded and Exaltation items:** names like `SoulFire +2` or `SoulFire (Exaltation)` count as `SoulFire`.
+- **What it updates:**
+  - Class quest checklists use the counts.
+  - Plane of Sky items you hold are counted.
+  - Any test or class quest whose reward you own is marked complete.
+- **After the export:** loot from later in your log is added on top until you export again.
+
+## Race unlocks
+
+The **Races** tab lists all 15 races with their EQLWiki unlock conditions, starting city and class choices.
+
+- **Faction races** need maximum faction with each listed faction. A faction ticks when any of your characters' logs say "Your faction standing with … could not possibly get any better."
+- **Each card** shows where you stand with every required faction: maxed, your estimated standing (if you set a baseline on the Factions tab), or the changes seen in your logs.
+- **Human** has two routes (Freeport or Qeynos factions). Either one completes it.
+- **Half-Elf** unlocks with Human or Wood Elf.
+- **Kerran** is unlocked by the "Aid the Kerrans of Kerra Isle" task, which has a 12-quest checklist you tick yourself. Accept the task first: quests done before it is accepted don't count.
+- **Unlocked** ticks a race you started as or used a Race Unlock Token on. Unlocks are account-wide, so all your characters share them.
+- **Ways to raise each faction** come from Alanna's Race Unlock Guide on EQLWiki, linked from the tab.
+
 ## Factions
 
 The **Factions** tab records every `Your faction standing with … has been adjusted by …` line.
@@ -202,7 +228,7 @@ Names aren't case-sensitive, and `*` is a wildcard: `a spiroc *` times every spi
   2. A reward item showing up in an inventory export.
   3. Ticking the box yourself.
   Ticks you make yourself are treated as "done before tracking started", so they don't use up items you're holding.
-- **Exact counts**: type `/outputfile inventory` in game now and then. The app reads the export from your game folder and uses it as the true count of what you hold, then adds later loot on top.
+- **Exact counts**: type `/outputfile inventory` in game now and then (see [Inventory export](#inventory-export)). The export is used as the true count of what you hold, and later loot is added on top. Rewards you own, including upgraded or Exaltation versions, mark their test done.
 - Items you looted before logging was on can be added with the `+` / `−` buttons in the "Still needed" list.
 - If you unlocked a class with a Primary Class Unlock Token, tick **unlocked via token** on that class.
 

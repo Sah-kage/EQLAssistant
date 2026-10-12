@@ -77,6 +77,8 @@ def make_handler(app):
                     return self._json(app.quests.view(char) if char else {"char": None})
                 if p == "/api/factions":
                     return self._json(app.factions.view(char) if char else {"char": None})
+                if p == "/api/races":
+                    return self._json(app.races.view(char))
                 if p == "/api/raids":
                     if not char:
                         return self._json({"char": None})
@@ -141,6 +143,14 @@ def make_handler(app):
                     return self._json({"ok": True, "look": look, "running": overlay_running(kind)})
                 except Exception as e:
                     return self._json({"ok": False, "error": str(e)}, 400)
+            if p == "/api/inventory/import":
+                try:
+                    mt = body.get("mtime")
+                    res = app.import_inventory(str(body.get("text", "")), str(body.get("filename", "")),
+                                               body.get("char") or None, float(mt) / 1000 if mt else None)
+                    return self._json({"ok": True, **res})
+                except Exception as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
             if p == "/api/focus":
                 scope = str(body.get("scope", "latest"))
                 name = str(body.get("name", "You"))
@@ -173,6 +183,19 @@ def make_handler(app):
                     return self._json({"ok": True, **import_from_wiki(str(body.get("page", "")))})
                 except Exception as e:
                     return self._json({"ok": False, "error": f"Couldn't read that wiki page: {e}"}, 400)
+            if p.startswith("/api/races/"):
+                with app.lock:
+                    try:
+                        if p == "/api/races/unlock":
+                            app.races.set_unlocked(str(body.get("race", "")), bool(body.get("on")))
+                        elif p == "/api/races/step":
+                            app.races.set_step(str(body.get("step", "")), bool(body.get("on")))
+                        else:
+                            return self.send_error(404)
+                    except ValueError as e:
+                        return self._json({"ok": False, "error": str(e)}, 400)
+                app.save_state(force=True)
+                return self._json({"ok": True})
             if p.startswith(("/api/quests/", "/api/factions/", "/api/raids/")):
                 with app.lock:
                     char = body.get("char") or app.char()

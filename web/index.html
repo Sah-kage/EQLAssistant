@@ -18,6 +18,7 @@
     <button data-tab="quests">Class Quests</button>
     <button data-tab="sky">Plane of Sky</button>
     <button data-tab="factions">Factions</button>
+    <button data-tab="races">Races</button>
     <button data-tab="overlays">Overlays</button>
     <button data-tab="settings">Settings</button>
   </nav>
@@ -110,6 +111,12 @@
           <p class="hint">Paste any quest page from eqlwiki.com and the app pulls in its item list. Browse each class's quests: <span id="q-cats"></span></p>
         </div>
         <div class="panel">
+          <div class="panel-h">Inventory</div>
+          <p class="hint" style="margin:0 0 8px" id="q-invinfo"></p>
+          <div class="btns" style="margin:0"><button class="primary" data-inv-import>Import inventory…</button></div>
+          <p class="hint">In game type <code>/outputfile inventory</code>. EQL writes <code>Name_server-Inventory.txt</code> to its game folder. The app reads it from there by itself, or import it here. Bags, bank, worn items and the key ring all count, including upgraded (+1…) and Exaltation versions.</p>
+        </div>
+        <div class="panel">
           <div class="panel-h">How items tick off</div>
           <p class="hint" style="margin:0">Items you loot or receive tick themselves. <span id="q-inv"></span> Ground pick-ups, combines and hand-ins usually don't show in the log, so tick those yourself.</p>
         </div>
@@ -119,6 +126,19 @@
   </section>
 
   <!-- FACTIONS -->
+  <section id="tab-races" class="tab">
+    <div class="panel race-head">
+      <div class="panel-h"><span>Race unlocks <span class="muted" id="race-sum"></span></span>
+        <span class="filters"><label><input type="checkbox" id="race-hide"> Hide unlocked</label></span></div>
+      <p class="hint" style="margin:0">From EQLWiki: a race unlocks through its achievement (Untapped Potential → Races). Faction races need
+        <b>maximum faction</b> with each listed faction; they don't all have to be maxed at once. A faction ticks here when any of your
+        characters' logs say <i>“Your faction standing with … could not possibly get any better.”</i> Starting a character as a race, or a
+        Race Unlock Token, also unlocks it: tick <b>Unlocked</b> for those. Unlocks are account-wide, so they're shared by all your characters.
+        Ways to raise each faction: <a id="race-guide" target="_blank" rel="noopener">Alanna's Race Unlock Guide on EQLWiki ↗</a></p>
+    </div>
+    <div id="race-cards" class="race-cards"></div>
+  </section>
+
   <section id="tab-factions" class="tab">
     <div class="split factions">
       <div class="panel">
@@ -168,6 +188,7 @@
       <div><h2>Plane of Sky — class unlocks</h2>
         <p class="muted" id="sky-sum"></p></div>
       <div class="filters">
+        <button class="ghost" data-inv-import title="Load a Name_server-Inventory.txt made with /outputfile inventory">Import inventory…</button>
         <label><input type="checkbox" id="hide-done"> Hide completed classes</label>
         <label><input type="checkbox" id="only-ready"> Only quests ready to hand in</label>
       </div>
@@ -230,6 +251,7 @@
     </div>
   </section>
 </main>
+<input type="file" id="inv-file" accept=".txt,text/plain" hidden>
 <div id="modal-bg" hidden></div>
 <div id="modal" hidden><div id="modal-body"></div></div>
 <div id="drawer-bg" hidden></div>

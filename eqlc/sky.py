@@ -127,37 +127,35 @@ class SkyTracker:
 
     # -- inventory export (/outputfile inventory) -------------------------
     def load_inventory(self, char, path):
-        counts = {}
+        """Read an export the game wrote next to the logs."""
         try:
             with open(path, encoding="cp1252", errors="replace") as fh:
-                header = fh.readline().rstrip("\n").split("\t")
-                try:
-                    ni = header.index("Name")
-                    ci = header.index("Count")
-                except ValueError:
-                    ni, ci = 1, 3
-                for line in fh:
-                    parts = line.rstrip("\n").split("\t")
-                    if len(parts) <= max(ni, ci):
-                        continue
-                    name = parts[ni].strip()
-                    if not name or name == "Empty":
-                        continue
-                    try:
-                        n = int(parts[ci] or 1)
-                    except ValueError:
-                        n = 1
-                    k = _k(name)
-                    counts[k] = counts.get(k, 0) + max(1, n)
+                text = fh.read()
+            mtime = os.path.getmtime(path)
         except OSError:
-            return
+            return None
+        return self.load_inventory_text(char, text, mtime, path)
+
+    def load_inventory_text(self, char, text, t=None, source=""):
+        """Use an inventory export (read from disk or imported in the app) as the true
+        count of what this character holds, and tick every test whose reward they own."""
+        from .inventory import parse
+        inv = parse(text)
+        t = time.time() if t is None else t
         c = self.char(char)
-        c["inventory"] = {"t": os.path.getmtime(path), "counts": counts, "path": path}
-        for k in counts:
+        c["inventory"] = {"t": t, "path": source,
+                          "counts": {_k(k): v for k, v in inv["counts"].items()},
+                          "owned": sorted({_k(k) for k in inv["owned"]}),
+                          "where": {_k(k): v for k, v in inv["where"].items()},
+                          "items": inv["items"]}
+        ticked = []
+        for k in c["inventory"]["owned"]:
             qid = REWARDS.get(k)
             if qid and qid not in c["done"]:
-                c["done"][qid] = {"t": c["inventory"]["t"], "how": "inventory"}
+                c["done"][qid] = {"t": t, "how": "inventory"}
+                ticked.append(qid)
         self.dirty = True
+        return {"char": char, "items": inv["items"], "distinct": len(inv["owned"]), "sky_ticked": ticked}
 
     # -- manual edits -----------------------------------------------------
     def set_done(self, char, qid, done):
@@ -195,6 +193,8 @@ class SkyTracker:
                 k = _k(l["item"])
                 held[k] = held.get(k, 0) + l["qty"]
         for qid, d in c["done"].items():
+            if qid not in QUESTS:                 # a test EQLWiki no longer lists
+                continue
             # Only turn-ins seen in the log consume items. Manual ticks mean
             # "already done", usually from before tracking started.
             if d["t"] > since and d["how"] == "log":
@@ -207,6 +207,7 @@ class SkyTracker:
     def view(self, char):
         c = self.char(char)
         held = self.held_counts(char)
+        where = (c.get("inventory") or {}).get("where") or {}
         out_classes = []
         need = {}
         tot_done = tot = 0
@@ -218,7 +219,8 @@ class SkyTracker:
                 items = []
                 for it in q["items"]:
                     h = held.get(_k(it["name"]), 0)
-                    items.append({"name": it["name"], "source": it["source"], "held": h})
+                    items.append({"name": it["name"], "source": it["source"], "held": h,
+                                  "where": where.get(_k(it["name"]), [])})
                     if not done:
                         e = need.setdefault(_k(it["name"]), {"name": it["name"], "source": it["source"],
                                                              "need": 0, "held": h, "for": []})
@@ -233,6 +235,7 @@ class SkyTracker:
             tot_done += ndone
             unlocked = cls["name"] in c["unlocked"] or ndone == len(qs)
             out_classes.append({"name": cls["name"], "abbr": cls["abbr"], "npc": cls["npc"],
+                                "wiki": D.PAGES.get(cls["name"], ""),
                                 "done": ndone, "total": len(qs), "unlocked": unlocked,
                                 "manual_unlock": cls["name"] in c["unlocked"], "quests": qs})
         shopping = sorted(need.values(), key=lambda e: (e["held"] >= e["need"], e["source"], e["name"]))
@@ -241,4 +244,6 @@ class SkyTracker:
         inv = c.get("inventory")
         return {"char": char, "classes": out_classes, "shopping": shopping, "drops": drops,
                 "group_drops": group, "done": tot_done, "total": tot,
-                "inventory_time": inv["t"] if inv else None}
+                "inventory_time": inv["t"] if inv else None,
+                "inventory": {"t": inv["t"], "source": os.path.basename(inv.get("path") or "") or "imported file",
+                              "items": inv.get("items") or sum(inv["counts"].values())} if inv else None}
