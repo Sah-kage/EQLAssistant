@@ -45,7 +45,8 @@ Windows may show a blue "Windows protected your PC" screen the first time, becau
 
 The workflow in `.github/workflows/build-exe.yml` builds the .exe on GitHub's Windows machines:
 - every push: the .exe is attached to the run (Actions tab → the run → **Artifacts**);
-- pushing a version tag (e.g. `git tag v1.0.1` then `git push origin v1.0.1`) creates a **Release** with `EQLAssistant.exe` and its checksum, and stamps that version into the app (shown at the bottom of Settings).
+- to publish a new version, change `__version__` in `eqlc/__init__.py` (e.g. to `"1.0.1"`) and push to `main`: the build creates the `v1.0.1` tag and a **Release** with `EQLAssistant.exe` and its checksum. The version shows at the bottom of Settings;
+- pushing a version tag yourself (e.g. `git tag v1.0.1` then `git push origin v1.0.1`) does the same.
 
 ### Option B: run from source
 
