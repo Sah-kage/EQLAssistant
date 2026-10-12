@@ -788,7 +788,7 @@ function renderRaces() {
     return `<div class="panel race ${r.unlocked ? 'unl' : ''}">
       <div class="race-h"><a class="rn" href="${esc(r.wiki)}" target="_blank" rel="noopener">${esc(r.name)}</a>
         ${r.unlocked ? `<span class="badge">UNLOCKED</span>` : `<span class="prog"><i style="width:${b ? 100 * a / b : 0}%"></i></span><span class="cnt">${a}/${b}</span>`}</div>
-      <div class="race-meta"><span class="city">${esc(r.city)}</span>${r.classes.map(c => `<span class="clsb">${esc(c)}</span>`).join('')}</div>
+      <div class="race-meta"><span class="city">${esc(r.city)}</span></div>
       ${body}
       ${r.tip ? `<p class="hint race-tip">${esc(r.tip)}</p>` : ''}
       <div class="race-f"><label class="chk" style="margin:0"><input type="checkbox" data-runl="${esc(r.name)}" ${r.how === 'manual' ? 'checked' : ''}> Unlocked <span class="muted">(started as it / token)</span></label>

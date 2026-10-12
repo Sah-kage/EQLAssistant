@@ -189,7 +189,7 @@ In game, type `/outputfile inventory`. EQL writes `Name_server-Inventory.txt` to
 
 ## Race unlocks
 
-The **Races** tab lists all 15 races with their EQLWiki unlock conditions, starting city and class choices.
+The **Races** tab lists all 15 races with their EQLWiki unlock conditions and starting city.
 
 - **Faction races** need maximum faction with each listed faction. A faction ticks when any of your characters' logs say "Your faction standing with … could not possibly get any better."
 - **Each card** shows where you stand with every required faction: maxed, your estimated standing (if you set a baseline on the Factions tab), or the changes seen in your logs.
