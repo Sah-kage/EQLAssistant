@@ -285,6 +285,8 @@ def make_handler(app):
                     app.sky.set_done(char, body["id"], bool(body.get("done")))
                 elif p == "/api/sky/unlock":
                     app.sky.set_unlocked(char, body["cls"], bool(body.get("unlocked")))
+                elif p == "/api/sky/currency":
+                    app.sky.set_currency(char, body.get("counts") or {})
                 elif p == "/api/sky/adjust":
                     app.sky.adjust(char, body["item"], int(body.get("delta", 1)))
                 elif p == "/api/fights/clear":

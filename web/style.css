@@ -330,3 +330,7 @@ tr.fdetail td { background:#0003; text-align:left !important; padding:10px 12px;
 .race-tip { margin:8px 0 0; }
 .race-f { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px; padding-top:8px; border-top:1px solid var(--line); font-size:13px; }
 .race-grp a { color:var(--blue); text-decoration:none; } .race-grp a:hover { text-decoration:underline; }
+
+.rune-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px 12px; margin:12px 0; }
+.rune-grid label { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; color:var(--dim); }
+.rune-grid input { width:70px; }

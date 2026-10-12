@@ -12,6 +12,7 @@ let tab = 'parser';
 let selFight = null;
 let followLive = true;
 let skySrc = 'all';
+let skyRunes = [];
 const collapsed = new Set(JSON.parse(localStorageGet('eqlc-collapsed') || '[]'));
 
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -206,6 +207,10 @@ async function refreshSky() {
     $$('[data-q]').forEach(b => b.onchange = async () => { await post('/api/sky/done', {char, id:b.dataset.q, done:b.checked}); refreshSky(); });
     $$('[data-unlock]').forEach(b => b.onchange = async () => { await post('/api/sky/unlock', {char, cls:b.dataset.unlock, unlocked:b.checked}); refreshSky(); });
 
+    skyRunes = d.runes;
+    $('#rune-info').textContent = d.currency_time
+      ? `Wind Runes: from your Currency tab ${dt(d.currency_time)}, plus runes picked up since.`
+      : 'Wind Runes are counted as you pick them up. Copy your Currency tab once for exact counts.';
     const shop = d.shopping.filter(s => skySrc === 'all' || (skySrc === 'rune') === s.name.startsWith('Wind Rune'));
     $('#shopping').innerHTML = shop.length ? shop.map(s => `
       <div class="need ${s.held >= s.need ? 'ok' : ''}" title="For: ${esc(s.for.join(', '))}">
@@ -224,6 +229,20 @@ async function refreshSky() {
       : '<div class="muted">None seen.</div>';
   } finally { skyBusy = false; }
 }
+
+$('#rune-set').onclick = () => {
+  openModal(`<h2>Wind Runes from your Currency tab</h2>
+    <p class="muted">Wind Runes go to the <b>Currency</b> tab of your inventory window, so <code>/outputfile inventory</code> doesn't include them.
+      Open that tab in game and copy each count here. From now on the app adds runes you pick up on top.</p>
+    <div class="rune-grid">${skyRunes.map(r => `<label>${esc(r.name.replace('Wind Rune ', ''))}<input type="number" min="0" max="999" data-rune="${esc(r.name)}" value="${r.held}"></label>`).join('')}</div>
+    <div class="modal-btns"><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" id="rune-save">Save counts</button></div>`);
+  $('#rune-save').onclick = async () => {
+    const counts = {};
+    $$('[data-rune]').forEach(i => counts[i.dataset.rune] = Math.max(0, parseInt(i.value || '0', 10) || 0));
+    await post('/api/sky/currency', {char, counts});
+    closeModal(); refreshSky();
+  };
+};
 
 // ---------- breakdown drawer ----------
 const OUT_COLORS = {hit: '#5bd38a', miss: '#6b7079', dodge: '#6aa8ff', parry: '#b48cf2', block: '#4fc1b7',

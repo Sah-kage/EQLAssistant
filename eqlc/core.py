@@ -54,7 +54,7 @@ GUESS_DIRS = [
 
 HISTORY_KINDS = {"crawls", "raids", "factions", "ledger", "sky"}
 _HIST_WORDS = ("You have entered", "Dungeon Crawl", "instance charge", "instance recharge",
-               "slain", " died.", "eward Chest", "eward chest", "s now available to you", "ote", "You gain ", "faction standing", "looted", "receive",
+               "slain", " died.", "eward Chest", "eward chest", "s now available to you", "ote", "You gain ", "faction standing", "looted", "receive", "Wind Rune",
                " regards you", " upon you", " considers you", " judges you", " your way", " at you")
 
 

@@ -228,6 +228,7 @@ Names aren't case-sensitive, and `*` is a wildcard: `a spiroc *` times every spi
   2. A reward item showing up in an inventory export.
   3. Ticking the box yourself.
   Ticks you make yourself are treated as "done before tracking started", so they don't use up items you're holding.
+- **Wind Runes** go to the **Currency** tab in game, not your bags, so inventory exports don't include them. The app counts runes as you pick them up: loot lines, plus lines like `You receive 2 Wind Rune Azia.` or `Wind Rune Azia has been added to your currency.`, with each pickup counted once. For exact counts, click **Set Wind Runes from Currency tab…** on the Plane of Sky tab and copy the numbers from your Currency tab once. Later pickups are added on top, and importing an inventory never resets them.
 - **Exact counts**: type `/outputfile inventory` in game now and then (see [Inventory export](#inventory-export)). The export is used as the true count of what you hold, and later loot is added on top. Rewards you own, including upgraded or Exaltation versions, mark their test done.
 - Items you looted before logging was on can be added with the `+` / `−` buttons in the "Still needed" list.
 - If you unlocked a class with a Primary Class Unlock Token, tick **unlocked via token** on that class.

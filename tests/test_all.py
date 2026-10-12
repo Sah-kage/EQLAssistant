@@ -262,6 +262,34 @@ class EndToEnd(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(d, "state.json")))
         self.assertFalse(os.path.exists(os.path.join(base, "EQLCompanion")))
 
+    def test_wind_runes_currency(self):
+        from eqlc.sky import SkyTracker, rune_in_line
+        T = "[Mon Oct 12 14:00:00 2026] "
+        self.assertEqual(rune_in_line(T + "You receive 2 Wind Rune Azia."), ("Wind Rune Azia", 2))
+        self.assertEqual(rune_in_line(T + "You have gained a Wind Rune Beza."), ("Wind Rune Beza", 1))
+        self.assertEqual(rune_in_line(T + "Wind Rune Caza x3 has been added to your currency."), ("Wind Rune Caza", 3))
+        self.assertEqual(rune_in_line(T + "1 Wind Rune Dena added to your alternate currency."), ("Wind Rune Dena", 1))
+        for line in ["--You have looted a Wind Rune Azia from a spiroc.--",       # counted as loot already
+                     "Bobbin tells the group, 'You receive 2 Wind Rune Azia'",
+                     "You receive 2 Wind Rune Bogus."]:
+            self.assertIsNone(rune_in_line(T + line), line)
+        st = {}
+        sky = SkyTracker(st)
+        sky.process("A", 100, parse_msg("--You have looted a Wind Rune Azia from a spiroc.--"))
+        sky.process_line("A", 101, T + "Wind Rune Azia has been added to your currency.")   # same pickup
+        sky.process_line("A", 200, T + "You receive 2 Wind Rune Beza.")
+        held = sky.held_counts("A")
+        self.assertEqual((held.get("wind rune azia"), held.get("wind rune beza")), (1, 2))
+        # an inventory export (which has no currency) doesn't wipe rune counts
+        sky.load_inventory_text("A", "Location\tName\tID\tCount\tSlots\nGeneral 1\tBread\t1\t1\t10\n", 300, "x")
+        self.assertEqual(sky.held_counts("A").get("wind rune beza"), 2)
+        # counts typed from the Currency tab become the base; later pickups add on
+        sky.set_currency("A", {"Wind Rune Beza": 5, "Kala": 1, "Nope": 3}, t=400)
+        sky.process_line("A", 500, T + "You receive a Wind Rune Kala.")
+        held = sky.held_counts("A")
+        self.assertEqual((held.get("wind rune beza"), held.get("wind rune kala"), held.get("wind rune azia")), (5, 2, None))
+        self.assertEqual(len(sky.view("A")["runes"]), 15)
+
     def test_race_unlocks(self):
         from eqlc.factions import Factions
         from eqlc.races import Races, fkey

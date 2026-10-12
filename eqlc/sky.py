@@ -44,6 +44,40 @@ _NOT_MINE = re.compile(r"\b(tells|says|shouts|auctions|told you|out of character
                        r"you cannot|you can not|you do not|you don't|lore item)\b|, '", re.IGNORECASE)
 
 
+# Wind runes go to the Currency tab, not your bags, so inventory exports don't list them.
+RUNE_NAMES = {_k("Wind Rune " + r): "Wind Rune " + r for r in D.WIND_RUNES}
+_RUNE = r"(?P<q>an?|\d+)\s+(?:x\s*)?(?P<name>wind runes?\s+[a-z]+)"
+_CURRENCY_RES = [
+    # "You receive 2 Wind Rune Azia." / "You have gained a Wind Rune Azia" / "You earned 1 Wind Rune Azia"
+    re.compile(r"^you (?:receive|have received|gain|gained|have gained|earn|earned|have earned|"
+               r"were awarded|are awarded|have been awarded|have been given|got|have found|found) " + _RUNE, re.I),
+    # "Wind Rune Azia x2 has been added to your currency." / "2 Wind Rune Azia added to your alternate currency"
+    re.compile(r"^(?:(?P<q>an?|\d+)\s+)?(?P<name>wind runes?\s+[a-z]+)(?:\s*\(?x\s*(?P<q2>\d+)\)?)?"
+               r".*\b(?:added to|into) your (?:alternate )?currenc", re.I),
+]
+
+
+def rune_in_line(line):
+    """(rune name, qty) if this line says a Wind Rune went into your currency, else None.
+    Plain "--You have looted ...--" lines are counted as loot already, so they're skipped here."""
+    msg = line.split("] ", 1)[-1].strip()
+    low = msg.lower()
+    if "wind rune" not in low or low.startswith("--") or _NOT_MINE.search(msg):
+        return None
+    for rx in _CURRENCY_RES:
+        m = rx.search(msg)
+        if not m:
+            continue
+        words = m.group("name").split()
+        key = _k("Wind Rune " + words[-1])
+        if key not in RUNE_NAMES:
+            return None
+        q = m.group("q") or (m.groupdict().get("q2"))
+        qty = int(q) if q and q.isdigit() else 1
+        return RUNE_NAMES[key], qty
+    return None
+
+
 def reward_in_line(line):
     """Quest id whose reward this log line says you received, else None.
 
@@ -111,11 +145,39 @@ class SkyTracker:
                 self.mark_done(char, qid, t, "log")
 
     def process_line(self, char, t, line):
-        """Any new log line showing you got a Sky test reward marks that test done."""
+        """Any new log line showing you got a Sky test reward marks that test done,
+        and Wind Runes going into your currency are counted."""
         qid = reward_in_line(line)
         if qid:
             self.mark_done(char, qid, t, "log")
+        rune = rune_in_line(line)
+        if rune:
+            self.add_currency_rune(char, t, *rune)
         return qid
+
+    def add_currency_rune(self, char, t, name, qty):
+        c = self.char(char)
+        # the same pickup can show as a loot line and a currency line: count it once
+        for l in c["loot"][-10:]:
+            if l["item"] == name and abs(l["t"] - t) <= 2 and l.get("corpse") != "currency":
+                return False
+        c["loot"].append({"t": t, "item": name, "qty": qty, "corpse": "currency"})
+        self.dirty = True
+        return True
+
+    def set_currency(self, char, counts, t=None):
+        """Wind Rune counts copied from the in-game Currency tab: the true count from now on."""
+        c = self.char(char)
+        clean = {}
+        for name, n in (counts or {}).items():
+            k = _k(name if name.lower().startswith("wind rune") else "Wind Rune " + name)
+            if k in RUNE_NAMES:
+                try:
+                    clean[k] = max(0, int(n))
+                except (TypeError, ValueError):
+                    continue
+        c["currency"] = {"t": time.time() if t is None else t, "counts": clean}
+        self.dirty = True
 
     def mark_done(self, char, qid, t, how):
         c = self.char(char)
@@ -183,26 +245,44 @@ class SkyTracker:
         self.dirty = True
 
     # -- view ---------------------------------------------------------------
+    def _since(self, c, k):
+        """Starting point for item k: (time, count). Wind runes come from the Currency tab
+        (typed in by you), everything else from the latest inventory export."""
+        inv = c.get("inventory")
+        if k in RUNE_NAMES:
+            cur = c.get("currency")
+            if cur:
+                return cur["t"], cur["counts"].get(k, 0)
+            if inv and k in inv["counts"]:
+                return inv["t"], inv["counts"][k]
+            return 0, 0
+        if inv:
+            return inv["t"], inv["counts"].get(k, 0)
+        return 0, 0
+
     def held_counts(self, char):
         c = self.char(char)
-        inv = c.get("inventory")
-        since = inv["t"] if inv else 0
-        held = dict(inv["counts"]) if inv else {}
+        keys = set(ITEMS)
+        held = {}
+        for k in keys:
+            since, n = self._since(c, k)
+            held[k] = [since, n]
         for l in c["loot"]:
-            if l["t"] > since:
-                k = _k(l["item"])
-                held[k] = held.get(k, 0) + l["qty"]
+            k = _k(l["item"])
+            if k in held and l["t"] > held[k][0]:
+                held[k][1] += l["qty"]
         for qid, d in c["done"].items():
             if qid not in QUESTS:                 # a test EQLWiki no longer lists
                 continue
             # Only turn-ins seen in the log consume items. Manual ticks mean
             # "already done", usually from before tracking started.
-            if d["t"] > since and d["how"] == "log":
-                for it in QUESTS[qid]["items"]:
-                    k = _k(it["name"])
-                    if k in held:
-                        held[k] -= 1
-        return {k: max(0, v) for k, v in held.items() if k in ITEMS}
+            if d["how"] != "log":
+                continue
+            for it in QUESTS[qid]["items"]:
+                k = _k(it["name"])
+                if k in held and d["t"] > held[k][0]:
+                    held[k][1] -= 1
+        return {k: max(0, v[1]) for k, v in held.items() if v[1]}
 
     def view(self, char):
         c = self.char(char)
@@ -242,7 +322,10 @@ class SkyTracker:
         drops = sorted(c["loot"], key=lambda l: -l["t"])[:300]
         group = [g for g in self.group_drops if g.get("seen_by") == char][-200:][::-1]
         inv = c.get("inventory")
+        cur = c.get("currency")
+        runes = [{"name": RUNE_NAMES[k], "held": held.get(k, 0)} for k in RUNE_NAMES]
         return {"char": char, "classes": out_classes, "shopping": shopping, "drops": drops,
+                "runes": runes, "currency_time": cur["t"] if cur else None,
                 "group_drops": group, "done": tot_done, "total": tot,
                 "inventory_time": inv["t"] if inv else None,
                 "inventory": {"t": inv["t"], "source": os.path.basename(inv.get("path") or "") or "imported file",
