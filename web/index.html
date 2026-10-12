@@ -65,6 +65,7 @@
           <span class="filters">
             <select id="crawl-zone"><option value="">All zones</option></select>
             <label><input type="checkbox" id="crawl-unfinished"> Show not completed</label>
+            <button class="ghost" id="proof-check" title="Check a proof file someone sent you">Check a proof file…</button>
           </span></div>
         <div id="crawl-runs"></div>
         <p class="hint">Duration runs from your first kill in the crawl zone (named by “&lt;zone&gt; is now available to you.”) to the first loot from the Reward Chest. Time spent ported out is included and shown separately. Click a run for details.</p>
@@ -254,6 +255,7 @@
   </section>
 </main>
 <input type="file" id="inv-file" accept=".txt,text/plain" hidden>
+<input type="file" id="proof-file" accept=".json,application/json" hidden>
 <div id="modal-bg" hidden></div>
 <div id="modal" hidden><div id="modal-body"></div></div>
 <div id="drawer-bg" hidden></div>

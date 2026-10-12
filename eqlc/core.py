@@ -10,6 +10,7 @@ from .fights import FightTracker
 from .motes import MoteCounter
 from .timers import Timers
 from .crawls import Crawls
+from .integrity import FileWatch
 from .factions import Factions
 from .quests import Quests
 from .raids import Raids
@@ -115,7 +116,8 @@ class App:
         self.sky = SkyTracker(self.state)
         self.motes = MoteCounter(self.state, self.cfg)
         self.timers = Timers(self.state, self.cfg)
-        self.crawls = Crawls(self.state)
+        self.crawls = Crawls(self.state, proof_dir=self.ddir)
+        self.watch = FileWatch()
         self.factions = Factions(self.state)
         self.raids = Raids(self.state, self.cfg)
         self.quests = Quests(self.state, self.sky)
@@ -179,6 +181,34 @@ class App:
             self.save_cfg()
             return look
 
+    # -- crawl proofs ------------------------------------------------------------
+    def export_proof(self, run_id):
+        """Write a proof file for one crawl run (its verdict, checks, hash chain and raw lines)."""
+        from . import __version__
+        from . import integrity as I
+        r = self.crawls._get(run_id)
+        if not r:
+            raise ValueError("No such run")
+        if r["status"] == "active":
+            raise ValueError("Finish the run first")
+        lines = []
+        try:
+            with open(I.proof_path(self.ddir, run_id), encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            pass
+        summary = self.crawls._summary(r, time.time())
+        doc = I.build_proof(r, summary, lines, __version__)
+        out_dir = os.path.join(self.ddir, "Proofs")
+        os.makedirs(out_dir, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(r["start"]))
+        name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"{r['char']}_{r['zone']}_{summary.get('tier_label') or ''}_{stamp}")
+        path = os.path.join(out_dir, name.strip("_") + ".eqlproof.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(I.dumps(doc))
+        return {"path": path, "folder": out_dir, "name": os.path.basename(path), "verdict": doc["verdict"],
+                "text": I.dumps(doc)}
+
     def tracker(self, char):
         t = self.trackers.get(char)
         if t is None:
@@ -214,11 +244,17 @@ class App:
             size = os.path.getsize(path)
         except OSError:
             return 0
+        char = info["char"]
+        changed = self.watch.check(path, info["pos"])
+        if changed:                                   # the log shrank, or lines already read were changed
+            with self.lock:
+                self.crawls.file_event(char, changed)
         if size < info["pos"]:
             info.update(pos=0, sky_from=0, dps_from=0, skip_partial=False)
         if size == info["pos"]:
+            self.watch.remember(path, info["pos"])
+            info["live"] = True
             return 0
-        char = info["char"]
         tr = self.tracker(char)
         n = 0
         with open(path, "rb") as fh:
@@ -243,6 +279,9 @@ class App:
                     lines = lines[1:]
                     info["skip_partial"] = False
                 pos = base
+                # Lines read here as the game writes them get a time of arrival, for the crawl
+                # integrity checks. The first read of a file this session is catching up: not live.
+                meta = {"now": time.time(), "mono": time.monotonic()} if info.get("live") else None
                 with self.lock:
                     for raw in lines:
                         lpos = pos
@@ -264,7 +303,7 @@ class App:
                         if sky_ok:
                             self.motes.process_line(char, t, line)
                             self.sky.process_line(char, t, line)
-                            self.crawls.process(char, t, ev, line)
+                            self.crawls.process(char, t, ev, line, meta)
                             if ev:
                                 et = ev["type"]
                                 if et in ("faction", "con", "death"):
@@ -292,6 +331,8 @@ class App:
                             if typ == "death":
                                 self.timers.process(char, t, ev, self.zone.get(char))
                     self.state["offsets"][path] = info["pos"]
+        self.watch.remember(path, info["pos"])
+        info["live"] = True              # caught up: from now on lines arrive as the game writes them
         return n
 
     def scan_history(self, path, char, upto=None, kinds=("crawls", "raids")):

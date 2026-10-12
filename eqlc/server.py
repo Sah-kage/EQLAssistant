@@ -235,6 +235,20 @@ def make_handler(app):
                         return self.send_error(404)
                 app.save_state(force=True)
                 return self._json(res)
+            if p == "/api/crawls/proof":
+                with app.lock:
+                    try:
+                        res = app.export_proof(int(body.get("id")))
+                    except (TypeError, ValueError) as e:
+                        return self._json({"ok": False, "error": str(e) or "No such run"}, 400)
+                return self._json(dict(res, ok=True))
+            if p == "/api/crawls/verify":
+                from .integrity import check_proof
+                try:
+                    doc = json.loads(body.get("text") or "")
+                except ValueError:
+                    return self._json({"ok": False, "problems": ["That isn't a proof file (not valid JSON)."]})
+                return self._json(check_proof(doc))
             if p.startswith("/api/crawls/"):
                 if p == "/api/crawls/rescan":
                     import threading

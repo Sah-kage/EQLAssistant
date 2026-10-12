@@ -83,6 +83,10 @@ def run(app, url, on_close=None):
         os.makedirs(storage, exist_ok=True)
         from .launch import ICON
         try:
+            webview.settings["ALLOW_DOWNLOADS"] = True       # "Download a copy" of a crawl proof
+        except Exception:
+            pass
+        try:
             webview.start(private_mode=False, storage_path=storage, icon=ICON)
         except TypeError:                     # older pywebview without icon=
             webview.start(private_mode=False, storage_path=storage)

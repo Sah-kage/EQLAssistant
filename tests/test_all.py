@@ -580,6 +580,73 @@ class EndToEnd(unittest.TestCase):
         o = c.overlay("A", now=1_000_000 + 900 + 31 * 60 + 130)
         self.assertEqual((o["state"], o["elapsed"]), ("active", 30))
 
+    def test_crawl_log_integrity(self):
+        from eqlc.crawls import Crawls
+        from eqlc import integrity as I
+        T0 = 1_000_000
+
+        def run(lines, lag=1.0, late_at=None, clock_skew=0.0, live=True, file_event=False):
+            c = Crawls({})
+            for dt_, msg in lines:
+                t = T0 + dt_
+                meta = None
+                if live:
+                    extra = 60 if late_at == dt_ else lag
+                    meta = {"now": t + extra, "mono": 5000 + dt_ + (clock_skew if "Reward Chest" in msg else 0)}
+                c.process("A", t, parse_msg(msg), msg, meta)
+                if file_event and dt_ == 40:
+                    c.file_event("A", "edited")
+            return c, c.runs[-1]
+
+        L = [(0, "Unrest is now available to you."), (10, "You have entered Unrest 2 (Adaptive)."),
+             (20, "You have slain a ghoul!"), (40, "a ghoul has been slain by Bobbin!"),
+             (300, "--You have looted a Gem from Reward Chest.--")]
+        c, r = run(L)
+        v = I.verdict(r)
+        self.assertEqual(v["status"], "verified", v)
+        self.assertEqual((r["proof"]["lines"], r["proof"]["late"]), (5, 0))
+        self.assertEqual(c._summary(r, T0 + 400)["proof"]["status"], "verified")
+        # a line written into the log a minute after its time stamp
+        self.assertEqual(I.verdict(run(L, late_at=40)[1])["status"], "suspicious")
+        # PC clock changed during the run: log says 280s, but 380s passed
+        v = I.verdict(run(L, clock_skew=100)[1])
+        self.assertEqual(v["status"], "suspicious")
+        self.assertTrue(any("PC clock" in x for x in v["reasons"]))
+        # log file edited while the run was going
+        self.assertEqual(I.verdict(run(L, file_event=True)[1])["status"], "suspicious")
+        # read from older logs: not witnessed
+        self.assertEqual(I.verdict(run(L, live=False)[1])["status"], "unverified")
+        # proof: the chain matches the lines; editing a line breaks it
+        r = run(L)[1]
+        doc = I.build_proof(r, {"duration": 280, "tier_label": "D2"}, [m for _, m in L], "test")
+        doc["lines"] = ["[Mon Oct 12 13:00:%02d 2026] %s" % (i, m) for i, (_, m) in enumerate(L)]
+        h = ""
+        for ln in doc["lines"]:
+            h = I.chain(h, ln)
+        doc["chain"] = h
+        doc["duration"] = 2                              # first kill at :02, chest at :04
+        self.assertTrue(I.check_proof(doc)["ok"], I.check_proof(doc))
+        bad = dict(doc, lines=doc["lines"][:-1] + ["[Mon Oct 12 13:00:03 2026] --You have looted a Gem from Reward Chest.--"])
+        self.assertFalse(I.check_proof(bad)["ok"])
+        self.assertFalse(I.check_proof({"format": "other"})["ok"])
+
+    def test_file_watch(self):
+        from eqlc.integrity import FileWatch
+        path = os.path.join(self.tmp, "w.txt")
+        with open(path, "w") as fh:
+            fh.write("[Mon Oct 12 13:00:00 2026] one\n")
+        w = FileWatch()
+        w.remember(path, os.path.getsize(path))
+        with open(path, "a") as fh:
+            fh.write("[Mon Oct 12 13:00:01 2026] two\n")       # normal growth
+        self.assertIsNone(w.check(path, 0))
+        with open(path, "r+") as fh:
+            fh.write("[Mon Oct 12 12:00:00 2026] one")          # rewrote something already read
+        self.assertEqual(w.check(path, 0), "edited")
+        with open(path, "w") as fh:
+            fh.write("x\n")
+        self.assertEqual(w.check(path, 0), "truncated")
+
     def test_crawl_fallbacks(self):
         # offered but never entered: dropped after 30 minutes
         c = self._crawl_log([(0, "Unrest is now available to you.")])

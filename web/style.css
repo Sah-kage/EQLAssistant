@@ -383,3 +383,14 @@ tr.dp-sub > td { background:#0003; padding:6px 14px 14px; text-align:left; }
 .dp-log td:nth-child(4), .dp-log th:nth-child(4) { text-align:left; }
 .dp-log td:first-child, .dp-log th:first-child { width:70px; }
 .dp-t td:first-child, .dp-t th:first-child { text-align:left; }
+
+/* crawl log checks */
+.proof { font-size:11px; padding:1px 7px; border-radius:9px; white-space:nowrap; background:#ffffff10; color:var(--dim); }
+.proof.verified { background:#5bd38a22; color:var(--green); }
+.proof.suspicious { background:#e5675e26; color:var(--red); font-weight:600; }
+.proof-box { border:1px solid var(--line); border-radius:8px; padding:8px 12px; background:var(--panel2); }
+.proof-box.verified { border-color:#5bd38a66; } .proof-box.verified b { color:var(--green); }
+.proof-box.suspicious { border-color:#e5675e88; } .proof-box.suspicious b { color:var(--red); }
+.proof-box ul { margin:6px 0 8px 18px; padding:0; color:var(--dim); font-size:13px; }
+.proof-box ul:empty { display:none; }
+a.btn { display:inline-flex; align-items:center; padding:6px 12px; border-radius:6px; text-decoration:none; color:var(--fg); border:1px solid var(--line); }

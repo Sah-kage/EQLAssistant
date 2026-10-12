@@ -18,6 +18,8 @@ abandoned crawl) is kept as "not completed" once you've been gone for
 import itertools
 import time
 
+from . import integrity as I
+
 from .motes import mote_matches
 
 GRACE = 30 * 60          # outside the instance this long without returning = run abandoned
@@ -43,7 +45,9 @@ def tier_label(level, tier=""):
 
 
 class Crawls:
-    def __init__(self, state):
+    def __init__(self, state, proof_dir=None):
+        self.proof_dir = proof_dir                     # where each run's raw lines are kept (live runs only)
+        self._meta = None
         s = state.setdefault("crawls", {})
         self.runs = s.setdefault("runs", [])
         self.active = s.setdefault("active", {})     # char -> run id
@@ -70,7 +74,7 @@ class Crawls:
              "kills": 0, "deaths": 0, "first_kill": None, "motes": {}, "xp": 0.0,
              "chest": {}, "reward_xp": False, "refund": None, "notes": [],
              "entered": bool(z.get("inst")) and not z.get("from_available"), "completed_at": None,
-             "offered": t, "waiting_kill": True}
+             "offered": t, "waiting_kill": True, "proof": I.new_proof(history=self._meta is None)}
         self.runs.append(r)
         if len(self.runs) > MAX_RUNS:
             del self.runs[: len(self.runs) - MAX_RUNS]
@@ -130,9 +134,41 @@ class Crawls:
             self._close(char, r, "left", t)
 
     # -- events ----------------------------------------------------------------------
-    def process(self, char, t, ev, line=None):
-        """Feed every parsed log event (only once per line)."""
+    def process(self, char, t, ev, line=None, meta=None):
+        """Feed every parsed log event (only once per line).
+
+        meta = {"now": wall clock, "mono": monotonic clock} when the line is read live
+        as the game writes it; None for older lines (history scans, catching up)."""
+        self._meta = meta
         self._expire(char, t)
+        before = self.current(char)
+        self._process(char, t, ev, line)
+        after = self.current(char)
+        if line:
+            for r in {id(x): x for x in (before, after) if x}.values():
+                if r["status"] == "active" or (r["status"] == "done" and r.get("end") == t and r is before):
+                    self._feed(r, t, line, meta)
+
+    def _feed(self, r, t, line, meta):
+        p = r.get("proof")
+        if p is None:
+            return
+        I.feed(p, t, line, meta)
+        if self.proof_dir and meta is not None:
+            try:
+                with open(I.proof_path(self.proof_dir, r["id"]), "a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+            except OSError:
+                pass
+
+    def file_event(self, char, kind, now=None):
+        """The log file shrank or already-read lines changed: flag the run in progress."""
+        r = self.current(char)
+        if r and r.get("proof") is not None:
+            r["proof"]["file_events"].append({"kind": kind, "t": time.time() if now is None else now})
+            self.dirty = True
+
+    def _process(self, char, t, ev, line=None):
         typ = ev["type"] if ev else None
         if line and "from reward chest" in line.lower():
             self._chest(char, t)
@@ -152,6 +188,8 @@ class Crawls:
                     if r.get("waiting_kill"):
                         # the timer starts on the first kill; anything before it doesn't count
                         r.update(start=t, waiting_kill=False, outside=0.0, exits=0)
+                        if r.get("proof") is not None:
+                            I.mark(r["proof"], "start", t, self._meta)
                 self.dirty = True
         elif typ == "xp":
             r = self._inside(char) or self._recent(char, t)
@@ -207,6 +245,8 @@ class Crawls:
         if r.get("waiting_kill"):
             r["waiting_kill"] = False
             r["start_known"] = False                     # no kill seen, so no real start time
+        if r.get("proof") is not None:
+            I.mark(r["proof"], "end", t, self._meta)
         if r["left_at"] is not None:
             r["outside"] += max(0.0, t - r["left_at"])
             r["left_at"] = None
@@ -297,9 +337,12 @@ class Crawls:
                 return None
             r = self._new(char, z, time.time() if now is None else now)
             r["waiting_kill"] = False
+            r["proof"]["manual_start"] = True
         else:
             r.update(start=time.time() if now is None else now, start_known=True, outside=0.0, exits=0,
                      kills=0, deaths=0, first_kill=None, motes={}, xp=0.0, left_at=None, waiting_kill=False)
+            if r.get("proof") is not None:
+                r["proof"]["manual_start"] = True
         self.dirty = True
         return r
 
@@ -366,6 +409,7 @@ class Crawls:
             "exits": r["exits"], "entered": r.get("entered", True), "away_now": r["status"] == "active" and r["left_at"] is not None,
             "to_first_kill": round(r["first_kill"] - r.get("offered", r["start"])) if r["first_kill"] else None,
             "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]),
+            "proof": I.verdict(r),
             "combat": round(combat) if combat is not None else None,
             "kills": r["kills"], "deaths": r["deaths"],
             "motes": motes, "motes_tiers": r["motes"], "motes_per_hour": round(motes / hours, 1) if hours > 0.01 else None,

@@ -136,6 +136,26 @@ While a crawl is running, the **Dungeon crawl timer** window shows the zone, dif
 
 The first time you run this version, the app looks back through your existing logs for past crawls. **Settings → Rescan logs for past dungeon crawls** does it again.
 
+### Log check (was this run really logged by the game?)
+
+The app can't make a text log tamper-proof, because anyone can edit a file on their own PC. What it can do is act as a witness while you play. Every completed run gets a **Log check** badge:
+
+- **✓ Logged live:** every line of the run reached the app within 15 seconds of the time stamped on it, and:
+  - time stamps never went backwards;
+  - the log file only grew (nothing already read was changed or cut);
+  - the run's length matches a stopwatch the app runs alongside it, which catches changing the PC clock mid-run;
+  - the start (first kill) and end (Reward Chest) were both seen live in the same app session.
+- **Not witnessed:** the app wasn't watching at the time. For example, it was read from older log lines, the app was started or restarted mid-run, or the timer was restarted by hand. This doesn't mean anything is wrong, only that the app can't vouch for it.
+- **⚠ Suspicious:** something didn't look like the game writing the log live. The reasons are listed, e.g. "1 line arrived 60s after its time stamp" or "the log says 1200s but 1500s actually passed".
+
+Click a run to see the reasons and **Export proof file**. The proof file has the run, its checks, the raw log lines of the run and a SHA-256 hash chain over them. It is saved in the `Proofs` folder of the app's data folder. Anyone can load it with **Check a proof file…** on the Crawls tab, which tells them whether the lines still match the chain and the claimed time, and what the player's app saw.
+
+**Limits, honestly:**
+- The app is open source and its data is stored on the player's PC, so a determined cheater could fake a proof or the app's own records.
+- The checks make casual editing (typing a line into the log, changing the clock, pasting in another run) easy to spot.
+- For a leaderboard, use the proof alongside video or screenshots.
+- The strongest protection would be the app reporting run start and end to the leaderboard server as they happen, so the server times the run itself.
+
 ## Raids
 
 The **Raids** tab lists raid bosses and ticks each one when your log shows it die. Counts run from the last weekly reset, Tuesday 8am Pacific (4pm UK time for most of the year), and the tab counts down to the next.

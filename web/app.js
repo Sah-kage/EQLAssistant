@@ -246,6 +246,27 @@ $('#rune-set').onclick = () => {
   };
 };
 
+// ---------- crawl log checks ----------
+const PROOF_LABEL = {verified: '✓ Logged live', unverified: 'Not witnessed', suspicious: '⚠ Suspicious', pending: 'In progress'};
+const proofBadge = p => !p ? '—' : `<span class="proof ${p.status}" title="${esc(p.reasons.join(' '))}">${PROOF_LABEL[p.status] || p.status}</span>`;
+$('#proof-check').onclick = () => { $('#proof-file').value = ''; $('#proof-file').click(); };
+$('#proof-file').onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = await post('/api/crawls/verify', {text: await f.text()});
+  const v = r.verdict || {};
+  openModal(`<h2>Proof check: ${esc(f.name)}</h2>
+    ${r.char ? `<p><b>${esc(r.char)}</b> · ${esc(r.zone || '')} ${esc(r.tier || '')} · ${r.duration != null ? hms(r.duration) : '—'} · ${r.lines || 0} log lines</p>` : ''}
+    <div class="proof-box ${r.ok ? (v.status || 'unverified') : 'suspicious'}">
+      <b>${r.ok ? 'File intact: the lines match the hash chain and the times.' : '⚠ This file has problems'}</b>
+      <ul>${(r.problems || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    ${v.status ? `<div class="proof-box ${v.status}" style="margin-top:10px"><b>What the player's app saw: ${PROOF_LABEL[v.status] || v.status}</b>
+      <ul>${(v.reasons || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    <p class="hint">A proof shows what the player's copy of EQL Assistant witnessed. The app is open source, so a determined
+      cheater could fake one. Treat it as one piece of evidence next to video or screenshots.</p>
+    <div class="modal-btns"><button class="primary" onclick="closeModal()">OK</button></div>`);
+};
+
 // ---------- fight deep dive ----------
 const dp = {id: null, tab: 'overview', data: null, open: {}, f: {type: 'all', who: '', q: ''}, timer: null};
 const pct = v => v == null ? '—' : `${v}%`;
@@ -549,7 +570,7 @@ async function refreshCrawls() {
   const showAll = $('#crawl-unfinished').checked;
   const runs = d.runs.filter(r => (!zsel.value || r.zone === zsel.value) && (showAll || r.status !== 'left'));
   $('#crawl-runs').innerHTML = runs.length ? `<table>
-    <tr><th>When</th><th>Zone</th><th>Difficulty</th><th>Duration</th><th>vs best</th><th>Kills</th><th>Deaths</th><th>Motes</th><th>Motes/hr</th><th>Refund</th></tr>
+    <tr><th>When</th><th>Zone</th><th>Difficulty</th><th>Duration</th><th>vs best</th><th>Kills</th><th>Deaths</th><th>Motes</th><th>Motes/hr</th><th>Refund</th><th title="Did the app see this run being logged live by the game?">Log check</th></tr>
     ${runs.map(r => {
       const status = r.status === 'active' ? '<span class="badge">LIVE</span>' : r.status === 'left' ? '<span class="muted">not completed</span>' : '';
       const refund = r.refund === true ? '✓' : r.refund === false ? '<span class="red" title="Too easy for a recharge">✗</span>' : '—';
@@ -557,9 +578,12 @@ async function refreshCrawls() {
         <td>${dt(r.start)}</td><td>${esc(r.zone)} ${status}</td><td>${lvlChip(r)}</td>
         <td><span class="dur">${hms(r.duration)}</span>${r.is_best ? '<span class="pb">★ PB</span>' : ''}${r.start_known ? '' : ' <span class="muted" title="Logging started mid-crawl">(start unknown)</span>'}</td>
         <td>${deltaHtml(r.vs_best)}</td><td>${r.kills}</td><td>${r.deaths || '—'}</td><td>${r.motes || '—'}</td>
-        <td>${r.motes_per_hour != null && r.motes ? dps(r.motes_per_hour) : '—'}</td><td>${refund}</td></tr>`;
+        <td>${r.motes_per_hour != null && r.motes ? dps(r.motes_per_hour) : '—'}</td><td>${refund}</td><td>${proofBadge(r.proof)}</td></tr>`;
       if (openRun !== r.id) return row;
-      return row + `<tr class="rundetail"><td colspan="10"><div class="rd">
+      return row + `<tr class="rundetail"><td colspan="11"><div class="rd">
+        <div class="wide proof-box ${r.proof.status}"><b>${PROOF_LABEL[r.proof.status] || r.proof.status}</b>
+          <ul>${r.proof.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+          ${r.status !== 'active' ? `<button class="ghost" data-proof="${r.id}">Export proof file</button>` : ''}</div>
         <div><span>Instance:</span> ${esc(r.raw || '—')}</div>
         <div><span>Started:</span> ${dt(r.start)}${r.end ? ` · <span>ended</span> ${dt(r.end)}` : ''}</div>
         <div><span>Inside the instance:</span> ${hms(r.inside)}</div>
@@ -573,6 +597,18 @@ async function refreshCrawls() {
         <div class="wide"><button class="ghost del" data-delrun="${r.id}">Delete this run</button></div></div></td></tr>`;
     }).join('')}</table>` : `<div class="muted" style="padding:8px 0">No ${showAll ? '' : 'completed '}crawls ${zsel.value ? 'in ' + esc(zsel.value) + ' ' : ''}yet.</div>`;
   $$('#crawl-runs tr.run').forEach(tr => tr.onclick = () => { openRun = openRun === +tr.dataset.run ? null : +tr.dataset.run; refreshCrawls(); });
+  $$('[data-proof]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const r = await post('/api/crawls/proof', {char, id: +b.dataset.proof});
+    if (!r || !r.ok) { alert((r && r.error) || 'Could not export'); return; }
+    const blob = URL.createObjectURL(new Blob([r.text], {type: 'application/json'}));
+    openModal(`<h2>Proof file saved</h2>
+      <p>${PROOF_LABEL[r.verdict.status]}: <b>${esc(r.name)}</b></p>
+      <p class="muted">Saved in <code>${esc(r.folder)}</code>. Attach it to your leaderboard submission together with your video or screenshots.</p>
+      <div class="modal-btns"><a class="btn ghost" href="${blob}" download="${esc(r.name)}">Download a copy</a>
+        ${window.pywebview ? `<button class="ghost" id="proof-folder">Open folder</button>` : ''}<button class="primary" onclick="closeModal()">OK</button></div>`);
+    const f = $('#proof-folder'); if (f) f.onclick = () => window.pywebview.api.open_folder(r.folder);
+  });
   $$('[data-delrun]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
     if (confirm('Delete this run from your history?')) { await post('/api/crawls/delete', {char, id: +b.dataset.delrun}); openRun = null; refreshCrawls(); }
