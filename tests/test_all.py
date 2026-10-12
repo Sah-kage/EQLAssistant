@@ -543,7 +543,9 @@ class EndToEnd(unittest.TestCase):
         qs = Quests(st, sky)
         data = {q["id"]: q for q in qs.all_quests()}
         self.assertEqual({"enc-tashania", "pal-soulfire", "wiz-icecomet"} <= set(data), True)
-        self.assertEqual(len([q for q in data.values() if q["kind"] == "epic"]), 16)
+        self.assertEqual(len([q for q in data.values() if q["kind"] == "epic"]), 15)   # no Beastlord epic on EQLWiki
+        for q in data.values():                                      # built-in quests come from EQLWiki only
+            self.assertTrue(q["wiki"].startswith("https://eqlwiki.com/"), q["id"])
         # every epic (and every Kunark-era quest) carries the pre-Kunark note; Classic ones don't
         for q in data.values():
             if q["kind"] == "epic" or q["era"] == "Kunark":
@@ -618,6 +620,9 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(r["classes"], ["Wizard"])
         self.assertEqual([(i["n"], i["quest_item"]) for i in r["items"]], [("Rod of Azia", True), ("Spell: Ice Comet", False)])
         self.assertEqual(page_title("https://eqlwiki.com/index.php?title=Coin_of_Tash_(Tashania)&action=edit"), "Coin of Tash (Tashania)")
+        for other in ("https://wiki.project1999.com/Coin_of_Tash", "wiki.project1999.com/Coin_of_Tash", "http://eqlwiki.com.evil.net/X"):
+            with self.assertRaises(ValueError):
+                page_title(other)
 
     def test_factions(self):
         from eqlc.factions import Factions, tier_for

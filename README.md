@@ -13,7 +13,7 @@ It only reads the log file the game already writes. No injection, no memory read
 - **Respawn timers**: list the mobs you camp and their respawn times. A countdown starts automatically when one dies.
 - **Dungeon crawls**: how long each crawl took, timed automatically, with personal bests per zone and difficulty, plus a live crawl timer on the DPS overlay.
 - **Raids**: which raid bosses you've killed since the Tuesday reset, with the countdown to the next one.
-- **Class quests**: item checklists for 116 class quests: every epic, plus spell, weapon, armour and item quests such as Torrid Corruptor, Fiery Avenger, Tashania, SoulFire and Ice Comet. Add any other quest by importing it from the EQL wiki.
+- **Class quests**: item checklists for 115 class quests from EQLWiki: the epics, plus spell, weapon, armour and item quests such as Torrid Corruptor, Fiery Avenger, Tashania, SoulFire and Ice Comet. Add any other quest by importing it from the EQL wiki.
 - **Factions**: every faction change from your log, what caused it, and your estimated standing.
 - **DPS parser**: every fight, split into two sides.
   - **Players & group**: you, groupmates and pets, with damage, DPS, hits, average, max, crits and damage taken.
@@ -147,9 +147,9 @@ You need to be in the zone for the kill to appear in your log.
 ## Class quests
 
 The **Class Quests** tab has item checklists for:
-- **every class's epic**, from the EQL wiki's "Epic Items To Keep" checklist; items the wiki marks unverified show ⚠;
+- **the epics** listed on EQLWiki (all classes except Beastlord, which has no epic page there yet), from the EQL wiki's "Epic Items To Keep" checklist; items the wiki marks unverified show ⚠;
 - **Coin of Tash (Tashania)** for Enchanters, **Zimel's Blades (SoulFire)** for Paladins and **Tarton's Wheel (Ice Comet)** for Wizards, step by step;
-- about 100 more class quests from the EQL wiki, including:
+- about 100 more class quests, all taken from EQLWiki (eqlwiki.com) and listed in its class quest categories, including:
   - **weapons**: Torrid Corruptor, Fiery Avenger, Sword of Nobility, Harvester, Rogue Redemption (Burning Rapier), Rain Caller, Langseax, Eye of Stormhammer, the Iksar warrior pikes;
   - **spells**: the cleric/shaman/druid symbol quests, the Summoning of Dread/Fright/Terror, Ilanic's Scroll, Brain Bite, Cannibalize II;
   - **armour sets**: Armor of Ro, Darkforge, ShadowBound, Incandescent, Lambent, Totemic, Ivy Etched, Trooper Scale and others, listed piece by piece;
@@ -168,7 +168,7 @@ Tick the classes you play to filter the list. You can also filter by type (spell
 - A quest marks itself completed when its reward turns up in your items, or you can tick it.
 
 **Adding quests:**
-- **Import from EQL wiki:** paste any quest page link (e.g. from the `<Class> Quests` category pages linked on the tab). The app reads the page, lists every item it links to, lets you untick the ones you don't need, and saves it as a checklist.
+- **Import from EQL wiki:** paste any EQLWiki quest page link (e.g. from the `<Class> Quests` category pages linked on the tab). Links to other wikis, such as Project 1999, are refused. The app reads the page, lists every item it links to, lets you untick the ones you don't need, and saves it as a checklist.
 - **Add by hand:** type the items in yourself.
 
 Items you looted before adding a quest still count.

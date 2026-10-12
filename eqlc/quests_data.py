@@ -1,5 +1,10 @@
 """Built-in class quests for EverQuest Legends.
 
+Every built-in quest comes from EQLWiki (eqlwiki.com) and links back to its
+page there; nothing is taken from other wikis (e.g. Project 1999). Each one is
+listed in an EQLWiki "<Class> Quests" category (the Berserker epic is in
+"Epic Quests Era"). A test checks that every link points at eqlwiki.com.
+
 Sources (eqlwiki.com, checked October 2026):
   - Epic item checklists: "User:Manlaan/Epic Items To Keep" (items marked
     unverified there have u=True) and the per-class "<Class> Epic Quest" pages.
@@ -123,10 +128,6 @@ QUESTS = [
          _i("Onyx Drake Gut", "Blackwing, Rathe Mountains", u=True),
          _i("Alluring Horn", "Quag Maelstrom, Ocean of Tears"),
      ]},
-    {"id": "bst-epic", "cls": ["Beastlord"], "kind": "epic", "name": "Beastlord Epic Quest", "reward": "Beastlord epic",
-     "wiki": WIKI + "Beastlord_Epic_Quest",
-     "notes": "The EQL wiki has no Beastlord epic page yet, so there's nothing confirmed to collect. "
-              "Add items here as they're found.", "items": []},
     {"id": "ber-epic", "cls": ["Berserker"], "kind": "epic", "name": "Berserker Epic Quest", "reward": "Berserker epic",
      "wiki": WIKI + "Berserker_Epic_Quest", "notes": EPIC_NOTE, "items": [
          _i("Gnashing Kobold Paw", "Gnashing Kobold, Stonebrunt Mountains (+1900, +2350)", u=True),

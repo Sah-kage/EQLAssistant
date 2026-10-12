@@ -9,6 +9,7 @@ Every item you loot or receive is recorded, so quests you add later still see
 items you picked up earlier.
 """
 import json
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -172,10 +173,14 @@ def _api(params, opener=None):
 
 
 def page_title(text):
-    """Accept a page title or any eqlwiki URL."""
+    """Accept a page title or an eqlwiki.com URL (links to other wikis are refused)."""
     text = text.strip()
-    if text.startswith("http"):
-        u = urllib.parse.urlparse(text)
+    looks_like_url = "://" in text or re.match(r"^[\w-]+(\.[\w-]+)+/", text)
+    if text.startswith("http") or looks_like_url:
+        u = urllib.parse.urlparse(text if "://" in text else "https://" + text)
+        host = (u.hostname or "").lower()
+        if host != "eqlwiki.com" and not host.endswith(".eqlwiki.com"):
+            raise ValueError("only EQLWiki (eqlwiki.com) pages can be imported")
         qs = urllib.parse.parse_qs(u.query)
         if "title" in qs:
             text = qs["title"][0]
