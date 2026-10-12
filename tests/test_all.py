@@ -101,6 +101,43 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(len(v["drops"]), 2)
         self.assertEqual(v["group_drops"][0]["who"], "Bobbin")
 
+    def test_sky_reward_seen_in_log_completes_test(self):
+        from eqlc.sky import reward_in_line, QUESTS
+        qid = reward_in_line("[Mon Oct 12 13:00:00 2026] You receive Amulet of the Fae from Nomaad.")
+        self.assertEqual(QUESTS[qid]["name"], "Test of Wind")
+        for line in ["Nomaad gives you Amulet of the Fae.", "You have been given an Amulet of the Fae.",
+                     "--You have looted an Amulet of the Fae.--", "Amulet of the Fae has been added to your inventory.",
+                     "You have received Amulet of the Fae."]:
+            self.assertEqual(reward_in_line("[Mon Oct 12 13:00:00 2026] " + line), qid, line)
+        for line in ["Bobbin tells the group, 'you got the Amulet of the Fae yet?'",
+                     "--Bobbin has looted an Amulet of the Fae.--",
+                     "You cannot equip Amulet of the Fae.", "You say, 'Amulet of the Fae please'",
+                     "You have looted a Amulet of Woven Hair."]:
+            self.assertIsNone(reward_in_line("[Mon Oct 12 13:00:00 2026] " + line), line)
+        # live: a new line marks the test done
+        path = os.path.join(self.logs, "eqlog_Tester_legends.txt")
+        self.app.poll()
+        with open(path, "a") as fh:
+            fh.write("[Mon Oct 12 13:00:00 2026] Nomaad gives you Amulet of the Fae.\n")
+        self.app.poll()
+        done = self.app.sky.char("Tester")["done"]
+        self.assertEqual(done[qid]["how"], "log")
+
+    def test_sky_reward_in_old_history(self):
+        from eqlc.sky import reward_in_line
+        path = os.path.join(self.logs, "eqlog_Tester_legends.txt")
+        with open(path, "a") as fh:
+            fh.write("[Sun Oct 04 20:00:00 2026] You receive Amulet of the Fae from Nomaad.\n")
+        qid = reward_in_line("You receive Amulet of the Fae.")
+        self.app.state["offsets"][path] = os.path.getsize(path)      # read before this version: history only
+        self.app.state["history_scan"][path] = ["crawls", "raids", "factions", "ledger"]
+        self.app.poll()
+        for _ in range(50):
+            if qid in self.app.sky.char("Tester")["done"]:
+                break
+            time.sleep(0.05)
+        self.assertEqual(self.app.sky.char("Tester")["done"][qid]["how"], "history")
+
     def test_incremental_and_inventory(self):
         self.app.poll()
         path = os.path.join(self.logs, "eqlog_Tester_legends.txt")

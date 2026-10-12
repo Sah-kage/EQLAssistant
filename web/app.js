@@ -190,7 +190,7 @@ async function refreshSky() {
           <div class="q ${x.done ? 'done' : ''} ${x.ready ? 'ready' : ''}">
             <input type="checkbox" data-q="${esc(x.id)}" ${x.done ? 'checked' : ''} title="Mark turned in">
             <div class="t">${esc(x.name)} <span class="rw">→ ${esc(x.reward)}</span>
-              ${x.ready ? '<span class="tag">READY TO TURN IN</span>' : ''}${x.how && x.how !== 'manual' ? `<span class="tag muted">(${x.how})</span>` : ''}</div>
+              ${x.ready ? '<span class="tag">READY TO TURN IN</span>' : ''}${x.how && x.how !== 'manual' ? `<span class="tag muted">(${{log: 'reward seen in log', history: 'reward found in older logs', inventory: 'reward in inventory'}[x.how] || x.how})</span>` : ''}</div>
             <div class="its">${x.items.map(i => `<span class="it ${i.held ? 'have' : ''}" title="${esc(i.source)}">${esc(i.name)}${i.held > 1 ? ` <small>×${i.held}</small>` : ''}</span>`).join('')}</div>
           </div>`).join('')}
           <div class="cls-f"><span>Say “${esc(c.quests[0].trigger)}” etc. to ${esc(c.npc)}</span>

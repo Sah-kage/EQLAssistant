@@ -14,7 +14,7 @@ from .factions import Factions
 from .quests import Quests
 from .raids import Raids
 from .parser import parse_line
-from .sky import SkyTracker
+from .sky import SkyTracker, REWARD_RE as _sky_reward_re, reward_in_line
 
 DEFAULTS = {
     "log_dir": "",
@@ -51,14 +51,14 @@ GUESS_DIRS = [
 ]
 
 
-HISTORY_KINDS = {"crawls", "raids", "factions", "ledger"}
+HISTORY_KINDS = {"crawls", "raids", "factions", "ledger", "sky"}
 _HIST_WORDS = ("You have entered", "Dungeon Crawl", "instance charge", "instance recharge",
                "slain", " died.", "eward Chest", "eward chest", "s now available to you", "ote", "You gain ", "faction standing", "looted", "receive",
                " regards you", " upon you", " considers you", " judges you", " your way", " at you")
 
 
 def _history_relevant(line):
-    return any(w in line for w in _HIST_WORDS)
+    return any(w in line for w in _HIST_WORDS) or bool(_sky_reward_re.search(line))
 
 
 _crawl_relevant = _history_relevant
@@ -261,6 +261,7 @@ class App:
                         t, ev = r
                         if sky_ok:
                             self.motes.process_line(char, t, line)
+                            self.sky.process_line(char, t, line)
                             self.crawls.process(char, t, ev, line)
                             if ev:
                                 et = ev["type"]
@@ -300,6 +301,7 @@ class App:
         kinds = set(kinds)
         tmp_c, tmp_r, tmp_f = Crawls({}), Raids({}, self.cfg), Factions({})
         tmp_led = []
+        tmp_sky = []
         zone = None
         name = os.path.basename(path)
         self.scan_status = f"Scanning {name} history…"
@@ -319,6 +321,10 @@ class App:
                     t, ev = r
                     if "crawls" in kinds:
                         tmp_c.process(char, t, ev, line)
+                    if "sky" in kinds:
+                        qid = reward_in_line(line)
+                        if qid:
+                            tmp_sky.append((t, qid))
                     if not ev:
                         continue
                     et = ev["type"]
@@ -337,6 +343,8 @@ class App:
                 raids_added = self.raids.merge(tmp_r.kills) if "raids" in kinds else 0
                 if "factions" in kinds:
                     self.factions.merge_from(tmp_f)
+                for st, qid in tmp_sky:                 # Sky test rewards you got before the app was watching
+                    self.sky.mark_done(char, qid, st, "history")
                 if "ledger" in kinds and tmp_led:
                     led = self.quests.ledger.setdefault(char, [])
                     led[:0] = tmp_led

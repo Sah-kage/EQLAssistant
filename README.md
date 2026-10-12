@@ -198,7 +198,7 @@ Names aren't case-sensitive, and `*` is a wildcard: `a spiroc *` times every spi
 
 - **Drops**: every `--You have looted ... --` line for a Sky quest item or wind rune is counted for that character. Loot by other people is listed separately and does not count as yours.
 - **Turn-ins** are picked up three ways:
-  1. A reward-received line in the log (e.g. `You receive Mask of Song`).
+  1. Any log line showing you got the test's reward, e.g. `You receive Amulet of the Fae from Nomaad.`, `Nomaad gives you Amulet of the Fae.`, `You have been given …` or `--You have looted …--`. Chat lines and other people's loot are ignored. Older logs are checked once too, so tests you finished before using the app tick themselves.
   2. A reward item showing up in an inventory export.
   3. Ticking the box yourself.
   Ticks you make yourself are treated as "done before tracking started", so they don't use up items you're holding.

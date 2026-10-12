@@ -36,6 +36,31 @@ def build_db():
 CLASSES, ITEMS, REWARDS = build_db()
 QUESTS = {q["id"]: q for c in CLASSES for q in c["quests"]}
 
+# Any test reward named in a log line. Longest names first, so a longer name wins over a shorter one inside it.
+REWARD_RE = re.compile(r"(?<![\w'])(" + "|".join(re.escape(n) for n in sorted(REWARDS, key=len, reverse=True))
+                       + r")(?![\w'])", re.IGNORECASE)
+# Lines that name an item without you getting it: chat, other people's loot, "you cannot ..." messages.
+_NOT_MINE = re.compile(r"\b(tells|says|shouts|auctions|told you|out of character|has looted|"
+                       r"you cannot|you can not|you do not|you don't|lore item)\b|, '", re.IGNORECASE)
+
+
+def reward_in_line(line):
+    """Quest id whose reward this log line says you received, else None.
+
+    Catches "You receive X from Y.", "Y gives you X", "You have been given X",
+    "--You have looted X--", "X has been added to your inventory" and the like,
+    while ignoring chat and other people's loot.
+    """
+    m = REWARD_RE.search(line)
+    if not m:
+        return None
+    msg = line.split("] ", 1)[-1].lower()
+    if "you" not in msg:
+        return None
+    if not msg.startswith(("you receive", "you have received", "--you have looted")) and _NOT_MINE.search(msg):
+        return None
+    return REWARDS.get(_k(m.group(1)))
+
 
 def _blank():
     return {"loot": [], "done": {}, "unlocked": [], "inventory": None}
@@ -83,10 +108,22 @@ class SkyTracker:
         elif typ == "receive":
             qid = REWARDS.get(_k(ev["item"]))
             if qid:
-                c = self.char(char)
-                if qid not in c["done"]:
-                    c["done"][qid] = {"t": t, "how": "log"}
-                    self.dirty = True
+                self.mark_done(char, qid, t, "log")
+
+    def process_line(self, char, t, line):
+        """Any new log line showing you got a Sky test reward marks that test done."""
+        qid = reward_in_line(line)
+        if qid:
+            self.mark_done(char, qid, t, "log")
+        return qid
+
+    def mark_done(self, char, qid, t, how):
+        c = self.char(char)
+        if qid in c["done"]:
+            return False
+        c["done"][qid] = {"t": t, "how": how}
+        self.dirty = True
+        return True
 
     # -- inventory export (/outputfile inventory) -------------------------
     def load_inventory(self, char, path):
