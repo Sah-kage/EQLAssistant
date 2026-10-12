@@ -175,7 +175,10 @@ tr.click { cursor:pointer; } tr.click:hover td { background:#ffffff06; }
 @media (max-width:760px) { .tiles { grid-template-columns:repeat(3, 1fr); } }
 
 /* dungeon crawls */
-.split.crawls { grid-template-columns:430px 1fr; }
+.split.crawls { grid-template-columns:minmax(520px, 2fr) minmax(0, 3fr); }
+.split.crawls > * { min-width:0; }                  /* let the panels shrink instead of spilling */
+#crawl-runs, #crawl-bests { overflow-x:auto; }      /* a table that's still too wide scrolls inside its box */
+#crawl-now { overflow-wrap:anywhere; }
 .crawl-live { display:flex; align-items:baseline; gap:12px; margin:4px 0 2px; }
 .crawl-live .big { font-size:46px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--green); line-height:1; }
 .crawl-live .big.away { color:var(--gold); }
@@ -203,7 +206,7 @@ tr.rundetail td { background:#0003; text-align:left; padding:10px 12px; }
 .rd .wide { grid-column:1/3; }
 .rd .del { margin-top:6px; }
 .filters select { padding:3px 6px; font-size:12px; }
-@media (max-width:900px) { .split.crawls { grid-template-columns:1fr; } }
+@media (max-width:1150px) { .split.crawls { grid-template-columns:1fr; } }
 #crawl-runs td:nth-child(2), #crawl-runs th:nth-child(2), #crawl-runs td:nth-child(3), #crawl-runs th:nth-child(3),
 #crawl-bests td:nth-child(2), #crawl-bests th:nth-child(2) { text-align:left; }
 #crawl-bests td, #crawl-runs td { white-space:nowrap; }
