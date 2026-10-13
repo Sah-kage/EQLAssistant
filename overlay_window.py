@@ -506,6 +506,7 @@ class MotesOverlay(OverlayBase):
 class CrawlOverlay(OverlayBase):
     kind = "crawl"
     default_pos = (40, 520)
+    _snapped = set()                    # runs this window already took a picture of
 
     def build(self, f):
         self.head = self.label(f, "DUNGEON CRAWL", DIM, 8, True, row=0, column=0, columnspan=2, sticky="w")
@@ -517,6 +518,61 @@ class CrawlOverlay(OverlayBase):
 
     def waiting(self):
         self.head.config(text="DUNGEON CRAWL · waiting for app…")
+
+    # -- picture of this window for the leaderboard ---------------------------------
+    def _bbox(self):
+        """This window on screen, in real pixels (Windows display scaling taken into account)."""
+        r = self.root
+        r.update_idletasks()
+        box = (r.winfo_rootx(), r.winfo_rooty(), r.winfo_rootx() + r.winfo_width(), r.winfo_rooty() + r.winfo_height())
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                from ctypes import wintypes
+                u = ctypes.windll.user32
+                hwnd = u.GetAncestor(r.winfo_id(), 2) or r.winfo_id()
+                rect = wintypes.RECT()
+                u.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+                old = u.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))     # per-monitor aware: real pixels
+                try:
+                    if u.GetWindowRect(hwnd, ctypes.byref(rect)):
+                        box = (rect.left, rect.top, rect.right, rect.bottom)
+                finally:
+                    if old:
+                        u.SetThreadDpiAwarenessContext(ctypes.c_void_p(old))
+            except Exception:
+                pass
+        return box
+
+    def _snapshot(self, rid):
+        try:
+            from PIL import ImageGrab
+        except ImportError:
+            return                      # the app draws a picture of the result instead
+        alpha = self.alpha
+        try:
+            self.root.attributes("-alpha", 1.0)         # solid while the picture is taken
+            self.root.attributes("-topmost", True)
+            self.root.update()
+        except tk.TclError:
+            return
+
+        def grab():
+            try:
+                import base64
+                import io
+                img = ImageGrab.grab(bbox=self._bbox(), all_screens=True)
+                buf = io.BytesIO()
+                img.save(buf, "PNG", optimize=True)
+                self._post("/api/crawls/snapshot", {"id": rid, "png": base64.b64encode(buf.getvalue()).decode()})
+            except Exception:
+                pass
+            finally:
+                try:
+                    self.root.attributes("-alpha", alpha)
+                except tk.TclError:
+                    pass
+        self.root.after(250, grab)
 
     def render(self, d):
         c = d.get("crawl")
@@ -541,6 +597,9 @@ class CrawlOverlay(OverlayBase):
         self.stats.config(text=" · ".join(bits))
         pb = c.get("pb")
         if c["state"] == "done":
+            if c.get("id") and not c.get("snap") and c["id"] not in self._snapped:
+                self._snapped.add(c["id"])
+                self.root.after(800, lambda rid=c["id"]: self._snapshot(rid))   # once the window shows the result
             new = c.get("new_pb")
             self.head.config(text="CRAWL COMPLETE", fg=GOLD if new else GREEN)
             self.big.config(text=clock(c["elapsed"]), fg=GOLD if new else FG)

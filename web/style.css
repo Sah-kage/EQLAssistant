@@ -399,3 +399,20 @@ a.btn { display:inline-flex; align-items:center; padding:6px 12px; border-radius
 .party.solo { background:#ffffff10; color:var(--dim); }
 .party.group { background:#b48cf226; color:#cdb4f7; }
 #crawl-runs td:nth-child(4), #crawl-runs th:nth-child(4), #crawl-bests td:nth-child(3), #crawl-bests th:nth-child(3) { text-align:left; }
+
+/* leaderboard submissions and group classes */
+.lb { font-size:12px; }
+.lb.ok { color:var(--green); }
+.lb.err { color:var(--red); }
+.lbline { margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.lbbox { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; }
+.lbbox > div { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+img.snap { max-width:min(100%, 320px); border-radius:6px; border:1px solid var(--line); display:block; }
+#modal img.snap { margin:8px 0; }
+table.grp { width:auto; margin-top:4px; }
+table.grp td, table.grp th { padding:3px 10px 3px 0; font-size:13px; }
+.cls { display:inline-block; font-size:12px; padding:1px 7px; border-radius:9px; background:#9ad7ff1f; color:#bfe4ff; margin:1px 2px 1px 0; }
+.cls.guess { background:#ffffff10; color:var(--dim); border:1px dashed var(--line); }
+.cls3 { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0; }
+.cls3 select { min-width:0; flex:1 1 120px; }
+#modal-body .modal-btns #sub-msg { margin-right:auto; align-self:center; }

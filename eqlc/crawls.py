@@ -21,6 +21,7 @@ import re
 import time
 
 from . import integrity as I
+from .classes import ClassSpotter
 
 from .motes import mote_matches
 
@@ -73,11 +74,13 @@ class Crawls:
         self.proof_dir = proof_dir                     # where each run's raw lines are kept (live runs only)
         self.is_pet = lambda char, name: False         # set by the app: pets don't make a run "multiplayer"
         self.pets = {}                                 # char -> pet names heard calling you "Master"
+        self.saved_classes = lambda char: None         # set by the app: your three classes from Settings / who
         self._meta = None
         s = state.setdefault("crawls", {})
         self.runs = s.setdefault("runs", [])
         self.active = s.setdefault("active", {})     # char -> run id
         self.where = {}                                # char -> last zone event (not saved)
+        self.classes = ClassSpotter(state)             # who is what class (from /who and spells seen)
         self.dirty = False
         self._ids = itertools.count(max([r["id"] for r in self.runs] + [int(time.time() * 1000)]) + 1)
 
@@ -168,6 +171,13 @@ class Crawls:
         self._meta = meta
         self._expire(char, t)
         before = self.current(char)
+        other = self.classes.feed(char, t, line)
+        if self.classes.dirty:
+            self.classes.dirty, self.dirty = False, True
+        if other:
+            r = self._inside(char)
+            if r:
+                self._note_player(char, r, other)      # someone casting / healing in your instance
         self._process(char, t, ev, line)
         after = self.current(char)
         if line:
@@ -489,6 +499,16 @@ class Crawls:
         return added
 
     # -- views ------------------------------------------------------------------------
+    def group(self, r):
+        """You and the other players in a run, with their classes as far as the log shows."""
+        return self.classes.group(r["char"], (r.get("players") or {}).keys(), self.saved_classes(r["char"]))
+
+    def _snap(self, r):
+        if not self.proof_dir:
+            return False
+        from . import snapshot as S
+        return S.exists(self.proof_dir, r["id"])
+
     @staticmethod
     def _bucket(r):
         """Personal bests are kept per zone, difficulty and solo / multiplayer."""
@@ -523,6 +543,8 @@ class Crawls:
             "motes": motes, "motes_tiers": r["motes"], "motes_per_hour": round(motes / hours, 1) if hours > 0.01 else None,
             "xp": r["xp"], "reward_xp": r["reward_xp"], "refund": r["refund"],
             "chest": [{"item": k, "qty": v} for k, v in sorted(r["chest"].items())], "notes": r["notes"],
+            "group": self.group(r), "submitted": r.get("submitted"), "submit_error": r.get("submit_error"),
+            "snapshot": self._snap(r) if r["status"] == "done" else False,
         }
 
     def bests(self, char=None):
@@ -605,7 +627,7 @@ class Crawls:
             if r["status"] == "done" and now - r["end"] <= 5 * 60:
                 pb = self.pb_for(r)
                 d = round(r["end"] - r["start"])
-                return {"state": "done", "zone": r["zone"], "tier_label": tier_label(r["level"], r["tier"]),
+                return {"state": "done", "id": r["id"], "snap": self._snap(r), "zone": r["zone"], "tier_label": tier_label(r["level"], r["tier"]),
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],

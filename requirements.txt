@@ -1,2 +1,4 @@
 # Optional: gives EQL Assistant its own app window instead of the web browser.
 pywebview>=5
+# Optional: pictures of the crawl timer window for leaderboard submissions.
+pillow>=10

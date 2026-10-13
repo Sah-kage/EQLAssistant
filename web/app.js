@@ -522,6 +522,56 @@ const deltaHtml = d => d == null ? '' : d === 0 ? '<span class="delta ahead">bes
 const partyChip = r => r.party === 'group'
   ? `<span class="party group" title="${esc((r.players || []).join(', ') || 'Group instance')}">Multiplayer${r.players && r.players.length ? ' · ' + (r.players.length + 1) : ''}</span>`
   : '<span class="party solo">Solo</span>';
+let CLASSES = [];
+const SRC_LABEL = {who: 'from /who', settings: 'your Settings', spells: 'guessed from spells & skills'};
+function groupHtml(r) {
+  const g = r.group || [];
+  if (!g.length) return '';
+  return `<table class="grp"><tr><th>Player</th><th>Classes</th><th>How we know</th></tr>${g.map(m => {
+    const cls = m.classes.length ? m.classes.map(c => {
+      const ev = (m.evidence || {})[c], alts = (m.alts || {})[c];
+      const tip = (ev ? 'Seen: ' + ev.join(', ') : '') + (alts && alts.length ? ` — could also be ${alts.join(' or ')}` : '');
+      return `<span class="cls${ev && !m.sure ? ' guess' : ''}" title="${esc(tip)}">${esc(c)}${alts && alts.length ? '?' : ''}</span>`;
+    }).join(' ') : '<span class="muted">unknown</span>';
+    const missing = m.classes.length && m.classes.length < 3 ? ` <span class="muted">+${3 - m.classes.length} not seen</span>` : '';
+    return `<tr><td>${esc(m.name)}${m.you ? ' <span class="muted">(you)</span>' : ''}</td><td>${cls}${missing}</td>
+      <td class="muted">${m.source ? SRC_LABEL[m.source] : (m.you ? 'pick them in Settings, or type /who' : 'nothing seen yet — /who them')}</td></tr>`;
+  }).join('')}</table>`;
+}
+function lbStatus(r) {
+  if (r.submitted) return `<span class="lb ok" title="${esc(r.submitted.message || '')}">✓ Sent to the leaderboard ${dt(r.submitted.at)}${r.submitted.auto ? ' (automatically)' : ''}${r.submitted.duplicate ? ' — the site already had it' : ''}</span>`;
+  const err = r.submit_error ? `<span class="lb err">Not sent: ${esc(r.submit_error.msg)}</span> ` : '';
+  const can = r.status === 'done' && r.start_known && r.proof && r.proof.status !== 'suspicious';
+  return err + (can ? `<button class="primary" data-submit="${r.id}">${r.submit_error ? 'Try again…' : 'Submit to leaderboard…'}</button>` : '');
+}
+const clsSelect = (id, val) => `<select id="${id}"><option value="">—</option>${CLASSES.map(c => `<option${c === val ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+async function submitDialog(id) {
+  const d = await get('/api/crawls?' + q());
+  const r = d && d.runs.find(x => x.id === id);
+  if (!r) return;
+  if (!CLASSES.length) { const s = await get('/api/settings'); CLASSES = (s && s.classes) || []; }
+  const me = (r.group || []).find(m => m.you) || {classes: []};
+  const mine = me.classes || [];
+  openModal(`<h2>Submit to the leaderboard</h2>
+    <p><b>${esc(r.zone)}</b> ${lvlChip(r)} ${partyChip(r)} · <b>${hms(r.duration)}</b> · ${proofBadge(r.proof)}</p>
+    <img class="snap" src="/api/crawls/snapshot?id=${r.id}" alt="" onerror="this.remove()">
+    <p>Your three classes</p>
+    <div class="cls3">${[0, 1, 2].map(i => clsSelect('sub-c' + i, mine[i])).join('')}</div>
+    ${me.source === 'spells' ? '<p class="hint">These were guessed from the spells you cast. Check them before sending.</p>' : ''}
+    <label class="f">Video link (optional)<input id="sub-video" placeholder="https://youtu.be/…"></label>
+    ${r.party === 'group' ? `<p>Group</p>${groupHtml(r)}<p class="hint">Group members' classes come from /who where you used it, otherwise they're guessed from the spells and skills seen in your log. Type <code>/who</code> with your group in the zone before you start for exact classes.</p>` : ''}
+    <p class="hint">Sent with the run: character, server, dungeon, difficulty, time, solo or group, the picture of the crawl timer and the log lines of the run (so the site can check the time).</p>
+    <div class="modal-btns"><span id="sub-msg" class="muted"></span><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" id="sub-go">Send</button></div>`);
+  $('#sub-go').onclick = async () => {
+    const classes = [0, 1, 2].map(i => $('#sub-c' + i).value).filter(Boolean);
+    if (classes.length !== 3 || new Set(classes).size !== 3) { $('#sub-msg').textContent = 'Pick three different classes.'; return; }
+    $('#sub-go').disabled = true; $('#sub-msg').textContent = 'Sending…';
+    const res = await post('/api/crawls/submit', {char, id, classes, video: $('#sub-video').value});
+    if (!res || !res.ok) { $('#sub-go').disabled = false; $('#sub-msg').textContent = (res && res.error) || 'Could not send'; return; }
+    $('#modal-body').innerHTML = `<h2>Sent ✓</h2><p>${esc(res.message || 'Your run is on the leaderboard.')}</p><div class="modal-btns"><button class="primary" onclick="closeModal()">OK</button></div>`;
+    refreshCrawls();
+  };
+}
 const motesTxt = mt => Object.entries(mt || {}).map(([k, v]) => `${v} ${k === 'potential' ? 'plain' : k}`).join(', ') || '—';
 
 function crawlNow(d) {
@@ -548,7 +598,8 @@ function crawlNow(d) {
       <div class="crawl-live"><span class="big done">${hms(j.duration)}</span>
         ${j.pb != null ? `<span class="pbline">previous best <b>${hms(j.pb)}</b> ${deltaHtml(j.duration - j.pb)}</span>` : ''}</div>
       <div class="crawl-stats"><div><label>Kills</label><b>${j.kills}</b></div><div><label>Deaths</label><b>${j.deaths}</b></div>
-        <div><label>Motes</label><b>${j.motes}</b></div></div>`;
+        <div><label>Motes</label><b>${j.motes}</b></div></div>
+      <div class="lbline">${lbStatus(j)}</div>`;
   const w = d.where;
   return `<div class="panel-h"><span>Current run</span>${w && w.inst ? '<span class="btns" style="margin:0"><button class="ghost" id="crawl-reset" title="Start timing this instance: the timer starts on your next kill">Start timing here</button></span>' : ''}</div><div class="muted" style="padding:6px 0 4px">Not in a crawl.
       The timer is set up by “&lt;zone&gt; is now available to you.” and starts on your first kill in that zone${w ? ` (you're in ${esc(w.zone)})` : ''}.</div>`;
@@ -591,7 +642,7 @@ async function refreshCrawls() {
         <td>${dt(r.start)}</td><td>${esc(r.zone)} ${status}</td><td>${lvlChip(r)}</td><td>${partyChip(r)}</td>
         <td><span class="dur">${hms(r.duration)}</span>${r.is_best ? '<span class="pb">★ PB</span>' : ''}${r.start_known ? '' : ' <span class="muted" title="Logging started mid-crawl">(start unknown)</span>'}</td>
         <td>${deltaHtml(r.vs_best)}</td><td>${r.kills}</td><td>${r.deaths || '—'}</td><td>${r.motes || '—'}</td>
-        <td>${r.motes_per_hour != null && r.motes ? dps(r.motes_per_hour) : '—'}</td><td>${refund}</td><td>${proofBadge(r.proof)}</td></tr>`;
+        <td>${r.motes_per_hour != null && r.motes ? dps(r.motes_per_hour) : '—'}</td><td>${refund}</td><td>${proofBadge(r.proof)}${r.submitted ? ' <span class="lb ok" title="Sent to the leaderboard">✓</span>' : ''}</td></tr>`;
       if (openRun !== r.id) return row;
       return row + `<tr class="rundetail"><td colspan="12"><div class="rd">
         <div class="wide proof-box ${r.proof.status}"><b>${PROOF_LABEL[r.proof.status] || r.proof.status}</b>
@@ -606,6 +657,9 @@ async function refreshCrawls() {
         <div><span>Motes:</span> ${motesTxt(r.motes_tiers)}</div>
         <div><span>Party:</span> ${r.party === 'group' ? `multiplayer${r.players.length ? ' with ' + r.players.map(esc).join(', ') : ''}` : 'solo'}${r.stopped ? ' · <span class="muted">timer stopped by hand</span>' : ''}</div>
         <div><span>Experience:</span> ${r.xp ? r.xp.toFixed(2) + '%' : '—'}${r.reward_xp ? ' (incl. crawl reward)' : ''}</div>
+        ${r.status === 'done' ? `<div class="wide lbbox">${r.snapshot ? `<img class="snap" src="/api/crawls/snapshot?id=${r.id}" alt="Crawl timer">` : ''}
+          <div><span>Leaderboard:</span> ${lbStatus(r)}</div></div>` : ''}
+        ${r.group && r.group.length ? `<div class="wide"><span>Classes:</span>${groupHtml(r)}</div>` : ''}
         <div class="wide"><span>Reward chest:</span> ${r.chest.length ? r.chest.map(c => `${esc(c.item)}${c.qty > 1 ? ' ×' + c.qty : ''}`).join(', ') : '—'}</div>
         ${r.notes.length ? `<div class="wide"><span>Messages:</span> ${r.notes.map(esc).join(' · ')}</div>` : ''}
         <div class="wide"><button class="ghost del" data-delrun="${r.id}">Delete this run</button></div></div></td></tr>`;
@@ -623,6 +677,7 @@ async function refreshCrawls() {
         ${window.pywebview ? `<button class="ghost" id="proof-folder">Open folder</button>` : ''}<button class="primary" onclick="closeModal()">OK</button></div>`);
     const f = $('#proof-folder'); if (f) f.onclick = () => window.pywebview.api.open_folder(r.folder);
   });
+  $$('[data-submit]').forEach(b => b.onclick = e => { e.stopPropagation(); submitDialog(+b.dataset.submit); });
   $$('[data-delrun]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
     if (confirm('Delete this run from your history?')) { await post('/api/crawls/delete', {char, id: +b.dataset.delrun}); openRun = null; refreshCrawls(); }
@@ -1082,10 +1137,10 @@ async function refreshOverlays(force) {
 $$('[data-goto]').forEach(b => b.onclick = () => document.querySelector(`nav button[data-tab="${b.dataset.goto}"]`).click());
 
 // ---------- settings ----------
-const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names'];
+const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names', 'leaderboard_url', 'leaderboard_auto'];
 let settingsLoaded = false;
 async function refreshSettings(force) {
-  const d = await get('/api/settings');
+  const d = await get('/api/settings?' + q());
   if (!d) return;
   $('#status-dot').classList.toggle('ok', d.status === 'ok');
   $('#status-dot').title = d.status;
@@ -1099,6 +1154,10 @@ async function refreshSettings(force) {
     if (el.type === 'checkbox') el.checked = !!v;
     else el.value = Array.isArray(v) ? v.join(', ') : v;
   }
+  CLASSES = d.classes || [];
+  const mc = d.my_classes || [];
+  $('#my-classes-who').textContent = d.char ? charLabel(d.char) : 'your character';
+  $('#my-classes').innerHTML = [0, 1, 2].map(i => clsSelect('my-c' + i, mc[i])).join('');
   $('#data-dir').innerHTML = `EQL Assistant ${esc(d.version || '')} · Saved data: <code>${esc(d.data_dir)}</code>`;
 }
 $('#save').onclick = async () => {
@@ -1111,6 +1170,13 @@ $('#save').onclick = async () => {
   await post('/api/settings', body);
   $('#saved').textContent = 'Saved ✓'; setTimeout(() => $('#saved').textContent = '', 2000);
   settingsLoaded = false; refreshSettings(true);
+};
+
+$('#save-classes').onclick = async () => {
+  const classes = [0, 1, 2].map(i => $('#my-c' + i).value).filter(Boolean);
+  const r = await post('/api/classes/mine', {char, classes});
+  $('#classes-saved').textContent = r && r.ok ? 'Saved ✓' : ((r && r.error) || 'Could not save');
+  setTimeout(() => $('#classes-saved').textContent = '', 2500);
 };
 
 // ---------- native app window extras ----------

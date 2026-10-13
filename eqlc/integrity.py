@@ -175,7 +175,8 @@ def proof_path(ddir, run_id):
 def build_proof(run, summary, lines, app_version):
     v = verdict(run)
     return {"format": "eql-assistant-crawl-proof", "format_version": VERSION, "app_version": app_version,
-            "created": time.time(), "char": run["char"], "zone": run["zone"], "raw_zone": run["raw"],
+            "created": time.time(), "char": run["char"].partition("_")[0],
+            "server": run["char"].partition("_")[2], "zone": run["zone"], "raw_zone": run["raw"],
             "tier": summary.get("tier_label"), "duration": summary.get("duration"),
             "start": run["start"], "end": run["end"], "kills": run["kills"], "deaths": run["deaths"],
             "verdict": v, "checks": {k: run["proof"].get(k) for k in

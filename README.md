@@ -169,6 +169,19 @@ Click a run to see the reasons and **Export proof file**. The proof file has the
 - For a leaderboard, use the proof alongside video or screenshots.
 - The strongest protection would be the app reporting run start and end to the leaderboard server as they happen, so the server times the run itself.
 
+### Sending runs to the leaderboard
+
+Put your EQL Crawl Times site address in **Settings → Crawl leaderboard** and pick your three classes (or type `/who` on yourself in game and the app fills them in). With **Submit finished crawls automatically** on, every run the log check marks **Logged live** is sent a few seconds after you loot the Reward Chest. Other runs (stopped by hand, app restarted mid-run) can be sent yourself: click the run, then **Submit to leaderboard…**. Runs read from older logs, or flagged suspicious, can't be sent.
+
+Each submission carries:
+- character and server (from the log file name), dungeon, difficulty and time to complete;
+- solo or group, and everyone in the group;
+- your three classes and, where the log shows them, your group members' classes;
+- a picture of the crawl timer window (the window takes it of itself when the run finishes; if it wasn't open, the app draws the same card);
+- the proof: the run's log lines and hash chain, so the site re-checks the time.
+
+**How group members' classes are found.** `/who` is exact: type `/who` in the zone with your group before you start (EQL shows `[60 Paladin/Cleric/Wizard] Name`). Without it the app guesses from what they do in your log: spells they cast, heal or hit with ("Bobbin hit a ghoul for 300 points of cold damage by Ice Comet"), songs, and skills like backstab, frenzy, bash and kick. Spells are matched against EQLWiki's spell lists for each class, and it picks the fewest classes (up to three) that explain everything seen, preferring spells only one class has. Guesses show with a dashed outline and a "?" where two classes fit equally. Pure melee classes and classes that didn't do anything visible can't be guessed.
+
 ## Raids
 
 The **Raids** tab lists raid bosses and ticks each one when your log shows it die. Counts run from the last weekly reset, Tuesday 8am Pacific (4pm UK time for most of the year), and the tab counts down to the next.

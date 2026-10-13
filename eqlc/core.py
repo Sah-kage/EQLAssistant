@@ -40,6 +40,9 @@ DEFAULTS = {
     "raid_reset_weekday": 1,      # 0=Mon .. 6=Sun  (EQL: Tuesday)
     "raid_reset_hour": 8,         # Pacific time    (EQL: 8am)
     "port": 7377,
+    "leaderboard_url": "",        # EQL Crawl Times site that finished crawls are sent to
+    "leaderboard_auto": True,     # send verified crawls there automatically when they finish
+    "leaderboard_classes": {},    # character id -> your three classes (sent with each run)
 }
 
 LOG_RE = re.compile(r"^eqlog_(?P<char>[^_]+)_(?P<server>.+)\.txt$", re.I)
@@ -133,6 +136,8 @@ class App:
         self.crawls = Crawls(self.state, proof_dir=self.ddir)
         self.crawls.is_pet = lambda char, name: (name in self.cfg.get("pet_names", []) or
                                                  name in self.tracker(char).pets())
+        self.crawls.saved_classes = lambda char: self.my_classes(char)
+        self._submitting = set()
         self.watch = FileWatch()
         self.factions = Factions(self.state)
         self.raids = Raids(self.state, self.cfg)
@@ -198,23 +203,27 @@ class App:
             return look
 
     # -- crawl proofs ------------------------------------------------------------
+    def _proof(self, r):
+        from . import __version__
+        from . import integrity as I
+        lines = []
+        try:
+            with open(I.proof_path(self.ddir, r["id"]), encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            pass
+        summary = self.crawls._summary(r, time.time())
+        return I.build_proof(r, summary, lines, __version__), summary
+
     def export_proof(self, run_id):
         """Write a proof file for one crawl run (its verdict, checks, hash chain and raw lines)."""
-        from . import __version__
         from . import integrity as I
         r = self.crawls._get(run_id)
         if not r:
             raise ValueError("No such run")
         if r["status"] == "active":
             raise ValueError("Finish the run first")
-        lines = []
-        try:
-            with open(I.proof_path(self.ddir, run_id), encoding="utf-8") as fh:
-                lines = fh.read().splitlines()
-        except OSError:
-            pass
-        summary = self.crawls._summary(r, time.time())
-        doc = I.build_proof(r, summary, lines, __version__)
+        doc, summary = self._proof(r)
         out_dir = os.path.join(self.ddir, "Proofs")
         os.makedirs(out_dir, exist_ok=True)
         stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(r["start"]))
@@ -224,6 +233,126 @@ class App:
             fh.write(I.dumps(doc))
         return {"path": path, "folder": out_dir, "name": os.path.basename(path), "verdict": doc["verdict"],
                 "text": I.dumps(doc)}
+
+    # -- leaderboard -----------------------------------------------------------------
+    def my_classes(self, char):
+        """Your three classes for a character: picked in Settings, else seen in /who."""
+        saved = (self.cfg.get("leaderboard_classes") or {}).get(char)
+        if saved and len(saved) == 3:
+            return list(saved)
+        name, server = split_char(char)
+        w = self.crawls.classes.who(server or "-", name)
+        if w and len(w["classes"]) == 3:
+            return list(w["classes"])
+        return None
+
+    def set_my_classes(self, char, classes):
+        from .classes_data import CLASSES
+        classes = [c for c in classes if c in CLASSES]
+        if len(classes) != 3 or len(set(classes)) != 3:
+            raise ValueError("Pick three different classes")
+        with self.lock:
+            self.cfg.setdefault("leaderboard_classes", {})[char] = classes
+            self.save_cfg()
+
+    def submittable(self, r):
+        """None if this run can go to the leaderboard, else why not."""
+        from . import integrity as I
+        if r["status"] != "done":
+            return "The run isn't finished."
+        if not r.get("start_known"):
+            return "The run's start time isn't known."
+        v = I.verdict(r)
+        if v["status"] == "suspicious":
+            return "The log checks flagged this run as suspicious."
+        if (r.get("proof") or {}).get("history") or not os.path.exists(I.proof_path(self.ddir, r["id"])):
+            return "This run was read from older log lines, so there's no proof the site can check."
+        return None
+
+    def build_submission(self, r, classes=None, video=""):
+        from . import leaderboard as L
+        from . import snapshot as S
+        why = self.submittable(r)
+        if why:
+            raise ValueError(why)
+        classes = list(classes or self.my_classes(r["char"]) or [])
+        if len(classes) != 3:
+            raise ValueError("Pick your three classes first (Settings, or Submit to leaderboard…).")
+        name, server = split_char(r["char"])
+        proof, summary = self._proof(r)
+        group = self.crawls.group(r)
+        png = S.load(self.ddir, r["id"])
+        if png is None:
+            png = S.render(summary, name)
+            if png:
+                with open(S.path(self.ddir, r["id"]), "wb") as fh:
+                    fh.write(png)
+        run = {k: summary.get(k) for k in ("zone", "tier_label", "level", "duration", "party", "kills", "deaths",
+                                           "start", "end", "stopped")}
+        run["tier"] = run.pop("tier_label")
+        return L.payload(proof, server, classes, video, summary["party"],
+                         [{k: g.get(k) for k in ("name", "classes", "source", "sure", "you", "level")} for g in group],
+                         run, png, f"{name}-run-{r['id']}.png")
+
+    def submit_run(self, run_id, classes=None, video="", auto=False):
+        """Send one finished run to the leaderboard. Returns the site's reply; raises ValueError."""
+        from . import __version__
+        from . import leaderboard as L
+        with self.lock:
+            r = self.crawls._get(run_id)
+            if not r:
+                raise ValueError("No such run")
+            if r.get("submitted"):
+                raise ValueError("This run was already sent to the leaderboard.")
+            if classes:
+                self.set_my_classes(r["char"], classes)
+            body = self.build_submission(r, classes, video)
+            url = self.cfg.get("leaderboard_url", "")
+        try:
+            reply = L.submit(url, body, __version__)
+        except ValueError as e:
+            with self.lock:
+                r["submit_error"] = {"at": time.time(), "msg": str(e), "auto": auto}
+                self.crawls.dirty = True
+            raise
+        with self.lock:
+            r["submitted"] = {"at": time.time(), "id": reply.get("id"), "auto": auto,
+                              "message": reply.get("message") or "", "duplicate": bool(reply.get("duplicate")),
+                              "url": reply.get("url") or ""}
+            r.pop("submit_error", None)
+            self.crawls.dirty = True
+        return reply
+
+    SNAP_WAIT = 8          # seconds to wait for the crawl window's picture before sending without it
+
+    def auto_submit(self, now=None):
+        """Send newly finished, verified runs by themselves (Settings: submit automatically)."""
+        from . import integrity as I
+        from . import snapshot as S
+        if not self.cfg.get("leaderboard_auto") or not self.cfg.get("leaderboard_url"):
+            return
+        now = time.time() if now is None else now
+        for r in reversed(self.crawls.runs[-20:]):
+            if (r["status"] != "done" or r.get("submitted") or r.get("auto_tried") or r["id"] in self._submitting
+                    or not r.get("end") or now - r["end"] > 30 * 60):
+                continue
+            if I.verdict(r)["status"] != "verified" or not self.my_classes(r["char"]):
+                continue
+            if now - r["end"] < self.SNAP_WAIT and not S.exists(self.ddir, r["id"]):
+                continue
+            r["auto_tried"] = now
+            self.crawls.dirty = True
+            self._submitting.add(r["id"])
+
+            def go(rid=r["id"]):
+                try:
+                    self.submit_run(rid, auto=True)
+                except Exception as e:          # noqa: BLE001 - shown on the run
+                    from .launch import log
+                    log(f"auto submit of run {rid} failed: {e}")
+                finally:
+                    self._submitting.discard(rid)
+            threading.Thread(target=go, daemon=True).start()
 
     def tracker(self, char):
         t = self.trackers.get(char)
@@ -554,6 +683,7 @@ class App:
             for c in {info["char"] for info in self.files.values()}:
                 self.motes.tick(c)
             self.crawls.tick()
+            self.auto_submit()
         self.status = "ok"
 
     def save_state(self, force=False):

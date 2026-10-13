@@ -2,6 +2,7 @@
 import json
 import mimetypes
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -19,6 +20,14 @@ def make_handler(app):
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _png(self, body):
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "max-age=30")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -45,6 +54,20 @@ def make_handler(app):
             p = u.path
             if not p.startswith("/api/"):
                 return self._static(p)
+            if p == "/api/crawls/snapshot":
+                from . import snapshot as S
+                with app.lock:
+                    try:
+                        rid = int(q.get("id", 0))
+                    except ValueError:
+                        rid = 0
+                    png = S.load(app.ddir, rid)
+                    r = app.crawls._get(rid) if png is None else None
+                    if r is not None and r["status"] == "done":
+                        png = S.render(app.crawls._summary(r, time.time()), r["char"].partition("_")[0])
+                if not png:
+                    return self.send_error(404)
+                return self._png(png)
             with app.lock:
                 char = q.get("char") or app.char()
                 if p == "/api/overlay":
@@ -114,8 +137,10 @@ def make_handler(app):
                     return self._json(v)
                 if p == "/api/settings":
                     from . import __version__
+                    from .classes_data import CLASSES
                     return self._json({"cfg": app.cfg, "status": app.status, "active": app.active_char,
-                                       "version": __version__,
+                                       "version": __version__, "classes": CLASSES,
+                                       "my_classes": app.my_classes(char) if char else None, "char": char,
                                        "characters": app.characters(),
                                        "data_dir": app.ddir})
             self.send_error(404)
@@ -244,6 +269,35 @@ def make_handler(app):
                     except (TypeError, ValueError) as e:
                         return self._json({"ok": False, "error": str(e) or "No such run"}, 400)
                 return self._json(dict(res, ok=True))
+            if p == "/api/crawls/snapshot":
+                from . import snapshot as S
+                with app.lock:
+                    try:
+                        rid = int(body.get("id"))
+                        if not app.crawls._get(rid):
+                            raise ValueError("No such run")
+                        if S.exists(app.ddir, rid) and not body.get("replace"):
+                            return self._json({"ok": True, "kept": True})
+                        S.save(app.ddir, rid, body.get("png") or "")
+                    except (TypeError, ValueError) as e:
+                        return self._json({"ok": False, "error": str(e) or "bad picture"}, 400)
+                return self._json({"ok": True})
+            if p == "/api/crawls/submit":
+                try:
+                    reply = app.submit_run(int(body.get("id")), body.get("classes") or None,
+                                           str(body.get("video") or "").strip())
+                except (TypeError, ValueError) as e:
+                    return self._json({"ok": False, "error": str(e) or "No such run"}, 400)
+                app.save_state(force=True)
+                return self._json({"ok": True, "message": reply.get("message") or "Sent to the leaderboard.",
+                                   "duplicate": bool(reply.get("duplicate")), "id": reply.get("id")})
+            if p == "/api/classes/mine":
+                char = body.get("char") or app.char()
+                try:
+                    app.set_my_classes(char, body.get("classes") or [])
+                except ValueError as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({"ok": True, "classes": app.my_classes(char)})
             if p == "/api/crawls/verify":
                 from .integrity import check_proof
                 try:
