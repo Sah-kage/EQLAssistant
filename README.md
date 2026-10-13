@@ -29,6 +29,14 @@ It only reads the log file the game already writes. No injection, no memory read
   - A "still needed" list of every boss drop and wind rune across your remaining tests, with where it drops.
   - A log of your Sky drops, plus Sky loot your group/raid picked up.
 
+## One character per server
+
+Each log file is its own character: `eqlog_Sahkage_rivervale.txt` and `eqlog_Sahkage_paineel.txt` are **Sahkage (rivervale)** and **Sahkage (paineel)**. They share nothing: fights, crawls, raids, factions, Plane of Sky tests, class quests (including your own custom quests), inventory, motes, respawn timers and race unlocks are all kept separate.
+
+- **Inventory exports** must keep their name, `Name_server-Inventory.txt`, so the app knows which server they belong to.
+- **Race unlocks** are shared by your characters on the same server, never across servers.
+- **Older data:** if you used an older version, each character's data moves to that name's character on the server it was most recently played on, the first time you run this version.
+
 ## Download
 
 Grab **EQLAssistant.exe** from the [latest release](../../releases/latest) and double-click it. No install and no Python needed. Windows may say "Windows protected your PC" because the file isn't code-signed: click **More info → Run anyway**. Each release also has a `.sha256` checksum if you want to verify the download.
@@ -121,8 +129,13 @@ The **Dungeon Crawls** tab times every crawl from the log.
   - If you enter an instance without an "is now available" line, it's still timed from the first kill, but marked "start unknown" and never counted as a personal best. The same goes for a chest looted without any kill.
   - If the crawl completes ("You have completed the Dungeon Crawl…") but nobody loots the chest, the run ends at the completion line once you leave.
   - An instance that's offered but never entered within 30 minutes is dropped.
+- **Solo or multiplayer:** each run is marked **Solo** or **Multiplayer**.
+  - A run is multiplayer when other players take part: they hit or kill mobs, loot, join your group, or talk in group or raid chat during the run. The instance name decides it if it says Solo or Group.
+  - Your own pet doesn't count. It's recognised when it calls you "Master", or add its name under pet names in Settings.
+  - Personal bests are kept separately for solo and multiplayer runs.
+- **Stop timer** ends the current run now and keeps its time, e.g. if the Reward Chest line never showed. **Reset timer** puts it back to 0:00, and it starts again on your next kill. Both are on the Crawls tab and on the crawl overlay's right-click menu. **Start timing here** starts a run in the instance you're in if the "is now available" line was missed.
 - **Porting out:** Gate, Succor and other ports drop you out of the instance. Coming back into the same instance continues the same run. The time spent outside is included in the duration and shown separately.
-- **Not completed:** if you leave and don't come back within 30 minutes, the run is kept as "not completed". This also covers normal farming instances, since the log can't tell those apart from a crawl until one finishes. These are hidden unless you tick **Show not completed**. Use **Not a crawl** to stop timing an instance straight away, or **Restart timer** if you buffed for ages before starting.
+- **Not completed:** if you leave and don't come back within 30 minutes, the run is kept as "not completed". This also covers normal farming instances, since the log can't tell those apart from a crawl until one finishes. These are hidden unless you tick **Show not completed**. Use **Not a crawl** to stop timing an instance straight away (the run is dropped).
 
 For each run you get:
 - duration, time inside the instance, time ported out and time from "is now available" to the first kill;

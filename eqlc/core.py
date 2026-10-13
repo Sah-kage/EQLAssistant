@@ -43,6 +43,18 @@ DEFAULTS = {
 
 LOG_RE = re.compile(r"^eqlog_(?P<char>[^_]+)_(?P<server>.+)\.txt$", re.I)
 
+
+def char_id(m):
+    """Every character is tracked per server: eqlog_Sahkage_rivervale.txt -> "Sahkage_rivervale".
+    Sahkage_rivervale and Sahkage_paineel share nothing."""
+    return f"{m.group('char')}_{m.group('server').lower()}"
+
+
+def split_char(cid):
+    """'Sahkage_rivervale' -> ('Sahkage', 'rivervale'); a bare name -> (name, '')."""
+    name, _, server = (cid or "").partition("_")
+    return name, server
+
 GUESS_DIRS = [
     r"C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest Legends\Logs",
     r"C:\Program Files\EverQuest Legends\Logs",
@@ -113,10 +125,13 @@ class App:
                     break
         self.state = _load(self.state_path, {})
         self.state.setdefault("offsets", {})
+        self.migrate_per_server()
         self.sky = SkyTracker(self.state)
         self.motes = MoteCounter(self.state, self.cfg)
         self.timers = Timers(self.state, self.cfg)
         self.crawls = Crawls(self.state, proof_dir=self.ddir)
+        self.crawls.is_pet = lambda char, name: (name in self.cfg.get("pet_names", []) or
+                                                 name in self.tracker(char).pets())
         self.watch = FileWatch()
         self.factions = Factions(self.state)
         self.raids = Raids(self.state, self.cfg)
@@ -401,6 +416,68 @@ class App:
             self.scan_status = f"Couldn't scan {name}: {e}"
         return self.scan_status
 
+    # -- one character per server -------------------------------------------------
+    def log_chars(self):
+        """[(mtime, path, char id)] for every eqlog_Name_server.txt, newest first."""
+        d = self.cfg.get("log_dir")
+        out = []
+        for p in glob.glob(os.path.join(d, "eqlog_*.txt")) if d and os.path.isdir(d) else []:
+            m = LOG_RE.match(os.path.basename(p))
+            if m:
+                try:
+                    out.append((os.path.getmtime(p), p, char_id(m)))
+                except OSError:
+                    continue
+        return sorted(out, reverse=True)
+
+    def characters(self):
+        """Every character, one per name + server."""
+        return sorted({c for _, _, c in self.log_chars()} |
+                      {c for c in set(self.sky.characters()) | set(self.trackers) if "_" in c})
+
+    def migrate_per_server(self):
+        """Older versions keyed everything by character name only. Move each name's data to that
+        name's character on the server it was most recently played on (Name_server)."""
+        st = self.state
+        if st.get("per_server"):
+            return
+        ids = {}
+        for _, _, cid in self.log_chars():
+            ids.setdefault(split_char(cid)[0].lower(), cid)        # newest log wins
+        if not ids:
+            st["per_server"] = 1 if not any(st.get(k) for k in ("sky", "quests", "factions", "ledger", "raid_kills")) else 0
+            return
+        to = lambda name: name if "_" in (name or "") else ids.get((name or "").lower(), name)
+        for key in ("sky", "quests", "factions", "ledger"):
+            sec = st.get(key)
+            if isinstance(sec, dict):
+                st[key] = {to(k): v for k, v in sec.items()}
+        cr = st.get("crawls") or {}
+        for r in cr.get("runs", []):
+            r["char"] = to(r["char"])
+        if isinstance(cr.get("active"), dict):
+            cr["active"] = {to(k): v for k, v in cr["active"].items()}
+        for k in st.get("raid_kills", []):
+            k["char"] = to(k["char"])
+        for g in st.get("group_drops", []):
+            if g.get("seen_by"):
+                g["seen_by"] = to(g["seen_by"])
+        for a in st.get("timers_active", []):
+            if a.get("char"):
+                a["char"] = to(a["char"])
+        races = st.get("races")
+        if isinstance(races, dict) and "unlocked" in races:            # was one list for everything
+            newest = self.log_chars()[0][2]
+            st["races"] = {"by_server": {split_char(newest)[1]: races}}
+        custom = st.get("custom_quests")
+        if isinstance(custom, list) and custom:                       # custom quests now belong to a character
+            newest = self.log_chars()[0][2]
+            st["custom_quests"] = {newest: custom}
+        if self.cfg.get("character") and "_" not in self.cfg["character"]:
+            self.cfg["character"] = ids.get(self.cfg["character"].lower(), "")
+            self.save_cfg()
+        st["per_server"] = 1
+
     def scan_crawl_history(self, path, char, upto=None):
         return self.scan_history(path, char, upto, ("crawls", "raids"))
 
@@ -411,7 +488,7 @@ class App:
             m = LOG_RE.match(os.path.basename(p))
             if m:
                 info = self.files.get(p)
-                self.scan_history(p, m.group("char"), info["sky_from"] if info else None, ("crawls", "raids"))
+                self.scan_history(p, char_id(m), info["sky_from"] if info else None, ("crawls", "raids"))
 
     def import_inventory(self, text, filename="", char=None, mtime=None):
         """An inventory export the player picked in the app (Import inventory...)."""
@@ -424,6 +501,16 @@ class App:
         known = {c.lower(): c for c in set(self.sky.characters()) | set(self.trackers) |
                  {i["char"] for i in self.files.values()}}
         char = known.get(char.lower(), char)
+        if "_" not in char:            # file named Name-Inventory.txt: which server?
+            same = sorted(c for c in known.values() if c.lower().startswith(char.lower() + "_"))
+            cur = self.char()
+            if cur and cur.lower().startswith(char.lower() + "_"):
+                char = cur
+            elif len(same) == 1:
+                char = same[0]
+            else:
+                raise ValueError("that file doesn't say which server it's from. Pick the character at the top "
+                                 "of the app and keep the file name as Name_server-Inventory.txt")
         with self.lock:
             res = self.sky.load_inventory_text(char, text, mtime, filename or "imported file")
             self.quests.dirty = True
@@ -432,8 +519,7 @@ class App:
 
     def _check_inventory(self, char, log_path):
         root = os.path.dirname(os.path.dirname(log_path))
-        for p in glob.glob(os.path.join(root, f"{char}_*-Inventory.txt")) + \
-                glob.glob(os.path.join(root, f"{char}-Inventory.txt")):
+        for p in glob.glob(os.path.join(root, f"{char}-Inventory.txt")):      # Name_server-Inventory.txt
             try:
                 mt = os.path.getmtime(p)
             except OSError:
@@ -448,15 +534,13 @@ class App:
         if not d or not os.path.isdir(d):
             self.status = "Log folder not set or not found - open Settings"
             return
-        logs = []
-        for p in glob.glob(os.path.join(d, "eqlog_*.txt")):
-            m = LOG_RE.match(os.path.basename(p))
-            if m:
-                logs.append((os.path.getmtime(p), p, m.group("char")))
+        if not self.state.get("per_server"):
+            with self.lock:
+                self.migrate_per_server()
+        logs = self.log_chars()
         if not logs:
             self.status = "No eqlog_*.txt files yet - type /log in game"
             return
-        logs.sort(reverse=True)
         self.active_char = logs[0][2]
         for _, p, char in logs:
             if p not in self.files:

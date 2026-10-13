@@ -394,3 +394,8 @@ tr.dp-sub > td { background:#0003; padding:6px 14px 14px; text-align:left; }
 .proof-box ul { margin:6px 0 8px 18px; padding:0; color:var(--dim); font-size:13px; }
 .proof-box ul:empty { display:none; }
 a.btn { display:inline-flex; align-items:center; padding:6px 12px; border-radius:6px; text-decoration:none; color:var(--fg); border:1px solid var(--line); }
+
+.party { font-size:11px; padding:1px 7px; border-radius:9px; white-space:nowrap; }
+.party.solo { background:#ffffff10; color:var(--dim); }
+.party.group { background:#b48cf226; color:#cdb4f7; }
+#crawl-runs td:nth-child(4), #crawl-runs th:nth-child(4), #crawl-bests td:nth-child(3), #crawl-bests th:nth-child(3) { text-align:left; }

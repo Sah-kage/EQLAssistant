@@ -52,7 +52,7 @@ def make_handler(app):
                                                                   "history": [], "best": 0}
                     o.update(char=char, zone=app.zone.get(char), status=app.status,
                              motes=app.motes.view(char) if char else None,
-                             timers=app.timers.view() if (q.get("kind") != "dps" or app.cfg.get("timers_on_overlay", True)) else [],
+                             timers=app.timers.view(char) if (q.get("kind") != "dps" or app.cfg.get("timers_on_overlay", True)) else [],
                              crawl=app.crawls.overlay(char) if char and (q.get("kind") != "dps" or app.cfg.get("crawl_on_overlay", True)) else None)
                     if q.get("kind") in app.OVERLAY_ON_KEY:
                         o["look"] = app.overlay_look(q["kind"])
@@ -104,9 +104,9 @@ def make_handler(app):
                     v["scan_status"] = app.scan_status
                     return self._json(v)
                 if p == "/api/timers":
-                    return self._json({"rules": app.cfg.get("timers", []), "active": app.timers.view()})
+                    return self._json({"rules": app.cfg.get("timers", []), "active": app.timers.view(char)})
                 if p == "/api/sky":
-                    chars = sorted(set(app.sky.characters()) | set(app.trackers))
+                    chars = app.characters()
                     if not char:
                         return self._json({"char": None, "characters": chars})
                     v = app.sky.view(char)
@@ -116,7 +116,7 @@ def make_handler(app):
                     from . import __version__
                     return self._json({"cfg": app.cfg, "status": app.status, "active": app.active_char,
                                        "version": __version__,
-                                       "characters": sorted(set(app.sky.characters()) | set(app.trackers)),
+                                       "characters": app.characters(),
                                        "data_dir": app.ddir})
             self.send_error(404)
 
@@ -193,9 +193,11 @@ def make_handler(app):
                 with app.lock:
                     try:
                         if p == "/api/races/unlock":
-                            app.races.set_unlocked(str(body.get("race", "")), bool(body.get("on")))
+                            app.races.set_unlocked(body.get("char") or app.char(), str(body.get("race", "")),
+                                                   bool(body.get("on")))
                         elif p == "/api/races/step":
-                            app.races.set_step(str(body.get("step", "")), bool(body.get("on")))
+                            app.races.set_step(body.get("char") or app.char(), str(body.get("step", "")),
+                                               bool(body.get("on")))
                         else:
                             return self.send_error(404)
                     except ValueError as e:
@@ -213,9 +215,9 @@ def make_handler(app):
                     elif p == "/api/quests/classes":
                         app.quests.set_classes(char, body.get("classes", []))
                     elif p == "/api/quests/save":
-                        res["quest"] = app.quests.save_custom(body.get("quest", {}))
+                        res["quest"] = app.quests.save_custom(char, body.get("quest", {}))
                     elif p == "/api/quests/delete":
-                        app.quests.delete_custom(body.get("id"))
+                        app.quests.delete_custom(char, body.get("id"))
                     elif p == "/api/factions/base":
                         v = body.get("value")
                         try:
@@ -259,6 +261,12 @@ def make_handler(app):
                     if p == "/api/crawls/restart":
                         if not app.crawls.restart(char):
                             return self._json({"ok": False, "error": "Enter a crawl instance first"}, 400)
+                    elif p == "/api/crawls/stop":
+                        if not app.crawls.stop(char):
+                            return self._json({"ok": False, "error": "No crawl timer is running"}, 400)
+                    elif p == "/api/crawls/reset":
+                        if not app.crawls.reset(char):
+                            return self._json({"ok": False, "error": "Enter a crawl instance first"}, 400)
                     elif p == "/api/crawls/discard":
                         app.crawls.discard_current(char)
                     elif p == "/api/crawls/delete":
@@ -269,6 +277,7 @@ def make_handler(app):
                 return self._json({"ok": True})
             if p.startswith("/api/timers/"):
                 with app.lock:
+                    char = body.get("char") or app.char()
                     if p == "/api/timers/rules":
                         rules = []
                         for r in body.get("rules", []):
@@ -285,15 +294,15 @@ def make_handler(app):
                         app.save_cfg()
                     elif p == "/api/timers/start":
                         a = app.timers.start_manual(str(body.get("mob", "")).strip(),
-                                                    body.get("minutes"), body.get("variance"))
+                                                    body.get("minutes"), body.get("variance"), char=char)
                         if not a:
                             return self._json({"ok": False, "error": "Unknown mob - add a rule or give minutes"}, 400)
                     elif p == "/api/timers/remove":
-                        app.timers.remove(body.get("id"))
+                        app.timers.remove(body.get("id"), char=char)
                     else:
                         return self.send_error(404)
                 app.save_state(force=True)
-                return self._json({"ok": True, "rules": app.cfg["timers"], "active": app.timers.view()})
+                return self._json({"ok": True, "rules": app.cfg["timers"], "active": app.timers.view(char)})
             if p == "/api/settings":
                 app.update_cfg(body)
                 return self._json({"ok": True, "cfg": app.cfg})

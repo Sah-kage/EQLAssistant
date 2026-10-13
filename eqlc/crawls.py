@@ -16,6 +16,8 @@ abandoned crawl) is kept as "not completed" once you've been gone for
 `grace` minutes, and can be hidden or deleted.
 """
 import itertools
+import os
+import re
 import time
 
 from . import integrity as I
@@ -27,6 +29,28 @@ MAX_RUN = 12 * 3600      # nothing realistic takes longer than this
 AFTER_DONE = 120         # chest loot / XP / refund lines within this long after completion
 MAX_RUNS = 1000
 TIER_NAMES = {0: "Base", 1: "Awakened", 2: "Adaptive", 3: "Fused", 4: "Refined"}
+
+
+_PLAYER = re.compile(r"^[A-Z][a-z]{2,14}$")          # EQ player names: one capitalised word
+_GROUP_LINE = re.compile(r"^(?P<who>[A-Z][a-z]{2,14}) (?:tells the group|tells the raid|has joined the group|"
+                         r"has joined the raid|is now the leader of your group)", re.I)
+
+
+# your pet talking to you: "Gobaner tells you, 'Attacking a ghoul Master.'"
+_PET_LINE = re.compile(r"^(?P<who>[A-Z][a-z]{2,14}) (?:tells you|says),? '.*\bmaster\b", re.I)
+
+
+def looks_like_mob(name):
+    n = (name or "").strip()
+    return n.lower().startswith(("a ", "an ", "the ")) or " " in n or "`" in n
+
+
+def party(r):
+    """'solo' or 'group' for a run: the instance name says so, or other players took part."""
+    mode = (r.get("mode") or "").lower()
+    if mode in ("solo", "group"):
+        return mode
+    return "group" if r.get("players") else "solo"
 
 
 def same_zone(a, b):
@@ -47,6 +71,8 @@ def tier_label(level, tier=""):
 class Crawls:
     def __init__(self, state, proof_dir=None):
         self.proof_dir = proof_dir                     # where each run's raw lines are kept (live runs only)
+        self.is_pet = lambda char, name: False         # set by the app: pets don't make a run "multiplayer"
+        self.pets = {}                                 # char -> pet names heard calling you "Master"
         self._meta = None
         s = state.setdefault("crawls", {})
         self.runs = s.setdefault("runs", [])
@@ -168,7 +194,47 @@ class Crawls:
             r["proof"]["file_events"].append({"kind": kind, "t": time.time() if now is None else now})
             self.dirty = True
 
+    def _note_player(self, char, r, name):
+        """Another player took part in this run (so it's multiplayer)."""
+        if (not name or name in ("You", "YOU") or not _PLAYER.match(name) or self.is_pet(char, name)
+                or name in self.pets.get(char, ())):
+            return
+        if name.lower() in (char or "").lower().split("_")[:1]:
+            return
+        pl = r.setdefault("players", {})
+        if name not in pl:
+            self.dirty = True
+        pl[name] = pl.get(name, 0) + 1
+
+    def _party_signals(self, char, t, ev, line):
+        if line and "aster" in line:
+            m = _PET_LINE.match(line.split("] ", 1)[-1])
+            if m:
+                pet = m.group("who").capitalize()
+                self.pets.setdefault(char, set()).add(pet)
+                for r in (self.current(char),):
+                    if r and pet in (r.get("players") or {}):
+                        del r["players"][pet]          # it was your pet all along
+                        self.dirty = True
+                return
+        r = self.current(char)
+        if not r or r["status"] != "active":
+            return
+        typ = ev["type"] if ev else None
+        if typ in ("dmg", "avoid"):
+            if ev.get("tgt") not in ("You", "YOU") and looks_like_mob(ev.get("tgt")):
+                self._note_player(char, r, ev.get("src"))           # a player hitting a mob
+        elif typ == "death" and ev.get("src") and looks_like_mob(ev.get("tgt")):
+            self._note_player(char, r, ev["src"])                   # "a ghoul has been slain by Bobbin!"
+        elif typ == "loot" and ev.get("who") not in (None, "You"):
+            self._note_player(char, r, ev["who"])                   # "--Bobbin has looted ...--"
+        elif line:
+            m = _GROUP_LINE.match(line.split("] ", 1)[-1])
+            if m:
+                self._note_player(char, r, m.group("who").capitalize())
+
     def _process(self, char, t, ev, line=None):
+        self._party_signals(char, t, ev, line)
         typ = ev["type"] if ev else None
         if line and "from reward chest" in line.lower():
             self._chest(char, t)
@@ -346,6 +412,46 @@ class Crawls:
         self.dirty = True
         return r
 
+    def stop(self, char, now=None):
+        """'Stop timer': end the current run now (e.g. the Reward Chest line didn't show)."""
+        r = self.current(char)
+        if not r:
+            return None
+        now = time.time() if now is None else now
+        if r.get("waiting_kill"):                      # nothing killed yet: no real time to keep
+            r.update(waiting_kill=False, start_known=False, start=now)
+        if r["left_at"] is not None:
+            r["outside"] += max(0.0, now - r["left_at"])
+            r["left_at"] = None
+        r.update(end=now, last=now, status="done", stopped=True)
+        if r.get("proof") is not None:
+            r["proof"]["manual_stop"] = True
+        self.active.pop(char, None)
+        self.dirty = True
+        return r
+
+    def reset(self, char, now=None):
+        """'Reset timer': back to 0:00, waiting for the next first kill in this zone."""
+        now = time.time() if now is None else now
+        r = self.current(char)
+        if not r:
+            z = self.where.get(char)
+            if not z or not z.get("inst"):
+                return None
+            r = self._new(char, z, now)
+            r["entered"] = True
+        r.update(start=now, offered=now, start_known=True, waiting_kill=True, end=None, outside=0.0, exits=0,
+                 kills=0, deaths=0, first_kill=None, motes={}, xp=0.0, chest={}, players={}, left_at=None,
+                 completed_at=None, proof=I.new_proof(history=False))
+        r["proof"]["manual_reset"] = True
+        if self.proof_dir:
+            try:
+                os.remove(I.proof_path(self.proof_dir, r["id"]))
+            except OSError:
+                pass
+        self.dirty = True
+        return r
+
     def discard_current(self, char):
         """'Not a crawl': drop the active run (e.g. a normal farming instance)."""
         r = self.current(char)
@@ -385,7 +491,8 @@ class Crawls:
     # -- views ------------------------------------------------------------------------
     @staticmethod
     def _bucket(r):
-        return (r["zone"], r["level"])
+        """Personal bests are kept per zone, difficulty and solo / multiplayer."""
+        return (r["zone"], r["level"], party(r))
 
     def _summary(self, r, now, fights=()):
         end = r["end"] if r["status"] != "active" else now
@@ -410,6 +517,7 @@ class Crawls:
             "to_first_kill": round(r["first_kill"] - r.get("offered", r["start"])) if r["first_kill"] else None,
             "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]),
             "proof": I.verdict(r),
+            "party": party(r), "players": sorted(r.get("players") or {}), "stopped": bool(r.get("stopped")),
             "combat": round(combat) if combat is not None else None,
             "kills": r["kills"], "deaths": r["deaths"],
             "motes": motes, "motes_tiers": r["motes"], "motes_per_hour": round(motes / hours, 1) if hours > 0.01 else None,
@@ -423,7 +531,7 @@ class Crawls:
             if r["status"] != "done" or not r["start_known"] or (char and r["char"] != char):
                 continue
             d = r["end"] - r["start"]
-            b = out.setdefault(self._bucket(r), {"zone": r["zone"], "level": r["level"],
+            b = out.setdefault(self._bucket(r), {"zone": r["zone"], "level": r["level"], "party": party(r),
                                                  "tier_label": tier_label(r["level"], r["tier"]),
                                                  "runs": 0, "best": None, "best_id": None, "total": 0.0,
                                                  "last": None, "last_at": 0})
@@ -435,7 +543,8 @@ class Crawls:
                 b["last"], b["last_at"] = d, r["end"]
         rows = []
         for b in out.values():
-            rows.append({"zone": b["zone"], "level": b["level"], "tier_label": b["tier_label"], "runs": b["runs"],
+            rows.append({"zone": b["zone"], "level": b["level"], "party": b["party"],
+                         "tier_label": b["tier_label"], "runs": b["runs"],
                          "best": round(b["best"]), "best_id": b["best_id"], "avg": round(b["total"] / b["runs"]),
                          "last": round(b["last"]), "last_at": b["last_at"]})
         return sorted(rows, key=lambda x: (-x["last_at"]))
@@ -467,8 +576,8 @@ class Crawls:
             just_done["pb"] = round(pb) if pb is not None else None
             just_done["new_pb"] = last_done["start_known"] and (pb is None or just_done["duration"] < pb)
         hist = []
-        bests = {(b["zone"], b["level"]): b["best_id"] for b in self.bests(char)}
-        best_d = {(b["zone"], b["level"]): b["best"] for b in self.bests(char)}
+        bests = {(b["zone"], b["level"], b["party"]): b["best_id"] for b in self.bests(char)}
+        best_d = {(b["zone"], b["level"], b["party"]): b["best"] for b in self.bests(char)}
         for r in reversed(runs[-300:]):
             s = self._summary(r, now, fights)
             s["is_best"] = bests.get(self._bucket(r)) == r["id"]
@@ -489,7 +598,7 @@ class Crawls:
             return {"state": state,
                     "zone": s["zone"], "tier_label": s["tier_label"], "start_known": s["start_known"],
                     "elapsed": s["duration"], "pb": round(pb) if pb is not None else None, "kills": s["kills"],
-                    "deaths": s["deaths"], "motes": s["motes"]}
+                    "deaths": s["deaths"], "motes": s["motes"], "party": s["party"], "players": s["players"]}
         for r in reversed(self.runs):
             if r["char"] != char:
                 continue
@@ -499,6 +608,7 @@ class Crawls:
                 return {"state": "done", "zone": r["zone"], "tier_label": tier_label(r["level"], r["tier"]),
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
-                        "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"]}
+                        "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
+                        "party": party(r), "players": sorted(r.get("players") or {})}
             break
         return None

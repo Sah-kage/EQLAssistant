@@ -39,9 +39,14 @@ def is_exaltation(name):
 
 
 def char_from_filename(fname):
-    """'Sahkage_rivervale-Inventory.txt' -> 'Sahkage'."""
-    m = _FILE_CHAR.match((fname or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1])
-    return m.group("char").capitalize() if m else None
+    """'Sahkage_rivervale-Inventory.txt' -> 'Sahkage_rivervale' (characters are per server).
+    'Sahkage-Inventory.txt' -> 'Sahkage' (server unknown)."""
+    base = (fname or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    m = re.match(r"^(?P<char>[^_\-.]+)(?:_(?P<server>[^-]+))?-Inventory", base, re.IGNORECASE)
+    if not m:
+        return None
+    name = m.group("char").capitalize()
+    return f"{name}_{m.group('server').lower()}" if m.group("server") else name
 
 
 def place(location):

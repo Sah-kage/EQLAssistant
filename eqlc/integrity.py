@@ -87,6 +87,8 @@ def verdict(run):
         why.append("The run never reached the Reward Chest.")
     if p.get("manual_start"):
         why.append("The timer was restarted by hand.")
+    if p.get("manual_stop"):
+        why.append("The timer was stopped by hand, not by the Reward Chest.")
     if not p.get("history"):
         if p["start_lag"] is None or p["start_mono"] is None:
             why.append("The first kill wasn't seen live.")

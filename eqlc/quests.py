@@ -34,17 +34,23 @@ def _k(s):
 class Quests:
     def __init__(self, state, sky):
         self.s = state.setdefault("quests", {})
-        self.custom = state.setdefault("custom_quests", [])
+        cq = state.get("custom_quests")
+        if not isinstance(cq, dict):                 # older versions: one list for everyone
+            cq = state["custom_quests"] = {"": cq} if cq else {}
+        self.custom_by = cq                          # char id -> [quests]: nothing shared between characters
         self.ledger = state.setdefault("ledger", {})
         self.sky = sky          # for the inventory export snapshot
         self.dirty = False
 
     # -- data ------------------------------------------------------------------
-    def all_quests(self):
-        return D.QUESTS + self.custom
+    def custom(self, char):
+        return self.custom_by.setdefault(char or "", [])
 
-    def get(self, qid):
-        return next((q for q in self.all_quests() if q["id"] == qid), None)
+    def all_quests(self, char=None):
+        return D.QUESTS + self.custom(char)
+
+    def get(self, qid, char=None):
+        return next((q for q in self.all_quests(char) if q["id"] == qid), None)
 
     def char(self, char):
         c = self.s.get(char)
@@ -102,7 +108,7 @@ class Quests:
         self.char(char)["classes"] = [x for x in classes if x in D.CLASSES]
         self.dirty = True
 
-    def save_custom(self, q):
+    def save_custom(self, char, q):
         """Add or replace a custom quest. q: {id?, name, cls[], reward, wiki, notes, items[{n,q,src,how,g}]}"""
         items = []
         for it in q.get("items", []):
@@ -122,17 +128,19 @@ class Quests:
                  "cls": [x for x in q.get("cls", []) if x in D.CLASSES] or ["Any"],
                  "reward": str(q.get("reward", "")).strip(), "wiki": str(q.get("wiki", "")).strip(),
                  "notes": str(q.get("notes", "")).strip(), "giver": str(q.get("giver", "")).strip(), "items": items}
-        for i, old in enumerate(self.custom):
+        mine = self.custom(char)
+        for i, old in enumerate(mine):
             if old["id"] == qid:
-                self.custom[i] = clean
+                mine[i] = clean
                 break
         else:
-            self.custom.append(clean)
+            mine.append(clean)
         self.dirty = True
         return clean
 
-    def delete_custom(self, qid):
-        self.custom[:] = [q for q in self.custom if q["id"] != qid]
+    def delete_custom(self, char, qid):
+        mine = self.custom(char)
+        mine[:] = [q for q in mine if q["id"] != qid]
         self.dirty = True
 
     # -- view ----------------------------------------------------------------------
@@ -143,7 +151,7 @@ class Quests:
         owned = {_k(k) for k in (inv or {}).get("owned", [])}
         where = {_k(k): v for k, v in ((inv or {}).get("where") or {}).items()}
         out = []
-        for q in self.all_quests():
+        for q in self.all_quests(char):
             ticks = set(c["ticks"].get(q["id"], []))
             items = []
             got = 0

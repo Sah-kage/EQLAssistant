@@ -63,18 +63,18 @@ class Timers:
         rule = self.match(mob, zone)
         return self._add(mob, rule, t, zone, char) if rule else None
 
-    def start_manual(self, mob, minutes=None, variance=None):
+    def start_manual(self, mob, minutes=None, variance=None, char=None):
         rule = self.match(mob) or {"mob": mob, "minutes": minutes or 0, "variance": variance or 0}
         if minutes:
             rule = dict(rule, minutes=minutes, variance=variance if variance is not None else rule.get("variance", 0))
         if float(rule.get("minutes") or 0) <= 0:
             return None
-        return self._add(mob, rule, time.time(), None, None, manual=True)
+        return self._add(mob, rule, time.time(), None, char, manual=True)
 
-    def remove(self, tid=None):
+    def remove(self, tid=None, char=None):
         before = len(self.active)
         if tid is None:
-            self.active.clear()
+            self.active[:] = [a for a in self.active if char and a.get("char") not in (None, char)]
         else:
             self.active[:] = [a for a in self.active if a["id"] != tid]
         self.dirty = self.dirty or len(self.active) != before
@@ -86,11 +86,14 @@ class Timers:
             self.active[:] = keep
             self.dirty = True
 
-    def view(self, now=None):
+    def view(self, char=None, now=None):
+        """Running timers for one character (each server's characters are kept apart)."""
         now = now or time.time()
         self.prune(now)
         out = []
         for a in self.active:
+            if char and a.get("char") not in (None, char):
+                continue
             rem = a["spawn_at"] - now
             if rem > 0:
                 state = "waiting"

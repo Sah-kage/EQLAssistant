@@ -36,6 +36,12 @@ def fmt(n):
     return f"{n:,.0f}" if n >= 100 else f"{n:,.1f}"
 
 
+def char_label(c):
+    """'Sahkage_rivervale' -> 'Sahkage (rivervale)': characters are per server."""
+    name, _, server = (c or "").partition("_")
+    return f"{name} ({server})" if server else name
+
+
 def clock(secs):
     secs = max(0, int(secs))
     h, rem = divmod(secs, 3600)
@@ -86,6 +92,10 @@ class OverlayBase:
         self.m.add_separator()
         if self.kind == "dps":
             self.m.add_command(label="Open my fight breakdown  (double-click)", command=self._open_breakdown)
+            self.m.add_separator()
+        if self.kind == "crawl":
+            self.m.add_command(label="Stop timer (keep this run)", command=lambda: self._post("/api/crawls/stop", {}))
+            self.m.add_command(label="Reset timer (back to 0:00)", command=lambda: self._post("/api/crawls/reset", {}))
             self.m.add_separator()
         self.m.add_command(label="Lock / unlock position and size", command=self._toggle_lock)
         self.m.add_command(label="Reset size and position", command=self._reset)
@@ -364,7 +374,7 @@ class DpsOverlay(OverlayBase):
         self.title.config(text="EQL ASSISTANT · waiting for app…")
 
     def render(self, d):
-        self.title.config(text=(d.get("char") or "EQL ASSISTANT").upper())
+        self.title.config(text=char_label(d.get("char")).upper() if d.get("char") else "EQL ASSISTANT")
         c = d.get("current")
         if c:
             self.cur.config(text=fmt(c["dps"]), fg=GREEN if c["active"] else FG)
@@ -469,7 +479,7 @@ class MotesOverlay(OverlayBase):
         m = d.get("motes")
         if not m:
             return
-        self.title.config(text=f"MOTES · {(d.get('char') or '').upper()}")
+        self.title.config(text=f"MOTES · {char_label(d.get('char')).upper()}")
         self.total.config(text=f"{m['count']:,}")
         self.rate.config(text=f"{fmt(m['per_hour'])}/hr" if m["count"] else "")
         tiers = m["tiers"]
@@ -519,7 +529,9 @@ class CrawlOverlay(OverlayBase):
             return
         zone = c["zone"] if len(c["zone"]) < 28 else c["zone"][:27] + "…"
         lvl = c["tier_label"] if c["tier_label"] != "?" else ""
-        self.zone.config(text=f"{zone}  {lvl}".strip(), fg=FG)
+        who = "SOLO" if c.get("party") != "group" else (
+            f"MULTIPLAYER ({len(c.get('players') or []) + 1})" if c.get("players") else "MULTIPLAYER")
+        self.zone.config(text=f"{zone}  {lvl}  · {who}".replace("   ·", "  ·").strip(), fg=FG)
         n = lambda k, w: f"{k} {w}" + ("" if k == 1 else "s")
         bits = [n(c["kills"], "kill")]
         if c.get("deaths"):

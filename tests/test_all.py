@@ -68,7 +68,7 @@ class EndToEnd(unittest.TestCase):
 
     def test_fights_and_sky(self):
         self.app.poll()
-        tr = self.app.tracker("Tester")
+        tr = self.app.tracker("Tester_legends")
         tr.tick(4e9)  # far future: closes the open fight
         fights = tr.list()
         self.assertEqual(len(fights), 3)
@@ -90,12 +90,12 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(o["avg_n"], 3)
         self.assertAlmostEqual(o["avg"], round((32 + 25 + 20) / 3, 1))
 
-        v = self.app.sky.view("Tester")
+        v = self.app.sky.view("Tester_legends")
         brd = [c for c in v["classes"] if c["name"] == "Bard"][0]
         tone = brd["quests"][0]
         self.assertTrue(tone["done"])        # "You receive Mask of Song"
         self.assertEqual(brd["done"], 1)
-        held = self.app.sky.held_counts("Tester")
+        held = self.app.sky.held_counts("Tester_legends")
         self.assertEqual(held.get("light woolen mask", 0), 0)   # consumed by turn-in
         self.assertEqual(held.get("wind rune meda", 0), 0)
         self.assertEqual(len(v["drops"]), 2)
@@ -120,7 +120,7 @@ class EndToEnd(unittest.TestCase):
         with open(path, "a") as fh:
             fh.write("[Mon Oct 12 13:00:00 2026] Nomaad gives you Amulet of the Fae.\n")
         self.app.poll()
-        done = self.app.sky.char("Tester")["done"]
+        done = self.app.sky.char("Tester_legends")["done"]
         self.assertEqual(done[qid]["how"], "log")
 
     def test_sky_reward_in_old_history(self):
@@ -133,10 +133,10 @@ class EndToEnd(unittest.TestCase):
         self.app.state["history_scan"][path] = ["crawls", "raids", "factions", "ledger"]
         self.app.poll()
         for _ in range(50):
-            if qid in self.app.sky.char("Tester")["done"]:
+            if qid in self.app.sky.char("Tester_legends")["done"]:
                 break
             time.sleep(0.05)
-        self.assertEqual(self.app.sky.char("Tester")["done"][qid]["how"], "history")
+        self.assertEqual(self.app.sky.char("Tester_legends")["done"][qid]["how"], "history")
 
     def test_inventory_export_import(self):
         from eqlc.inventory import parse, char_from_filename, base_name
@@ -162,18 +162,18 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(inv["where"]["Glowing Sword Hilt"], ["Bank"])
         self.assertEqual(inv["where"]["SoulFire"], ["Key ring", "Worn"])
         self.assertEqual((char_from_filename("Sahkage_rivervale-Inventory.txt"), base_name("Windstriker +10")),
-                         ("Sahkage", "Windstriker"))
+                         ("Sahkage_rivervale", "Windstriker"))
         r = self.app.import_inventory(text, "Tester_legends-Inventory.txt", mtime=1000)
-        self.assertEqual(r["char"], "Tester")
+        self.assertEqual(r["char"], "Tester_legends")
         from eqlc.sky import QUESTS
         names = {QUESTS[q]["name"] for q in r["sky_ticked"]}
         self.assertTrue({"Test of Sacrifice", "Test of Fists"} <= names)     # Aldryn (worn) + Wu's Fist (key ring)
-        v = {q["id"]: q for q in self.app.quests.view("Tester")["quests"]}
+        v = {q["id"]: q for q in self.app.quests.view("Tester_legends")["quests"]}
         self.assertTrue(v["pal-soulfire"]["done"])                             # SoulFire on the key ring
         hilt = next(i for i in v["pal-soulfire"]["items"] if i["n"] == "Glowing Sword Hilt")
         self.assertEqual((hilt["held"], hilt["where"]), (2, ["Bank"]))
         with self.assertRaises(ValueError):
-            self.app.import_inventory("not an export", "x.txt", char="Tester")
+            self.app.import_inventory("not an export", "x.txt", char="Tester_legends")
 
     def test_sky_data_is_eqlwiki(self):
         from eqlc import sky_data
@@ -188,23 +188,23 @@ class EndToEnd(unittest.TestCase):
         with open(path, "a") as fh:
             fh.write("[Sun Oct 11 20:05:00 2026] --You have looted a Feathered Cape from Gorgalosk's corpse.--\n")
         self.app.poll()
-        self.assertEqual(self.app.sky.held_counts("Tester").get("feathered cape"), 1)
-        mag = [c for c in self.app.sky.view("Tester")["classes"] if c["name"] == "Magician"][0]
+        self.assertEqual(self.app.sky.held_counts("Tester_legends").get("feathered cape"), 1)
+        mag = [c for c in self.app.sky.view("Tester_legends")["classes"] if c["name"] == "Magician"][0]
         self.assertEqual(mag["quests"][0]["items"][1]["held"], 1)
         # inventory export showing a reward -> quest done
         with open(os.path.join(self.tmp, "Tester_legends-Inventory.txt"), "w") as fh:
             fh.write("Location\tName\tID\tCount\tSlots\nGeneral1\tWind Rune Lena\t1\t2\t0\n"
                      "Waist\tGirdle of Faith\t2\t1\t0\n")
         self.app.poll()
-        held = self.app.sky.held_counts("Tester")
+        held = self.app.sky.held_counts("Tester_legends")
         self.assertEqual(held.get("wind rune lena"), 2)
-        self.assertIn("PAL:Test of Spirit", self.app.sky.char("Tester")["done"])
+        self.assertIn("PAL:Test of Spirit", self.app.sky.char("Tester_legends")["done"])
         # state persists
         self.app.save_state(force=True)
         app2 = App(log_dir=self.logs, ddir=self.app.ddir)
-        self.assertIn("PAL:Test of Spirit", app2.sky.char("Tester")["done"])
+        self.assertIn("PAL:Test of Spirit", app2.sky.char("Tester_legends")["done"])
         app2.poll()   # resumes from saved offset: no duplicate loot
-        self.assertEqual(len(app2.sky.char("Tester")["loot"]), 3)
+        self.assertEqual(len(app2.sky.char("Tester_legends")["loot"]), 3)
 
     def test_motes(self):
         path = os.path.join(self.logs, "eqlog_Tester_legends.txt")
@@ -212,20 +212,20 @@ class EndToEnd(unittest.TestCase):
             fh.write("[Sun Oct 11 20:04:00 2026] --You have looted 9 Motes of Lesser Potential from a bat.--\n")
         self.app.motes.session_start = time.mktime((2026, 10, 11, 20, 5, 0, 0, 0, -1))
         self.app.poll()
-        self.assertEqual(self.app.motes.view("Tester")["count"], 0)
+        self.assertEqual(self.app.motes.view("Tester_legends")["count"], 0)
         with open(path, "a") as fh:
             fh.write("[Sun Oct 11 20:06:00 2026] --You have looted a Mote of Lesser Potential from a bat.--\n"
                      "[Sun Oct 11 20:06:01 2026] --You have looted 4 Motes of Major Potential from a bat.--\n"
                      "[Sun Oct 11 20:06:02 2026] --Bobbin has looted 3 Motes of Lesser Potential from a bat.--\n")
         self.app.poll()
-        v = self.app.motes.view("Tester")
+        v = self.app.motes.view("Tester_legends")
         self.assertEqual(v["count"], 5)
         self.assertNotIn("reset_at", v)
         # a new session (app reopened) starts from 0, even with the same saved state
         self.app.save_state(force=True)
         app2 = App(log_dir=self.logs, ddir=self.app.ddir)
         app2.poll()
-        self.assertEqual(app2.motes.view("Tester")["count"], 0)
+        self.assertEqual(app2.motes.view("Tester_legends")["count"], 0)
         self.assertNotIn("motes", app2.state)
 
     def test_mote_tiers(self):
@@ -316,13 +316,59 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual((gm["done"], gm["seen"], gm["net"]), (False, True, 5))
         # Kerran: task steps
         for s in [s[0] for s in races_data.RACES[11]["unlock"]["task"]["steps"]]:
-            races.set_step(s, True)
+            races.set_step("A", s, True)
         v = {r["name"]: r for r in races.view("A")["races"]}
         self.assertEqual((v["Kerran"]["unlocked"], v["Kerran"]["how"]), (True, "task done"))
-        races.set_unlocked("Ogre", True)
+        races.set_unlocked("A", "Ogre", True)
         self.assertEqual(races.view("A")["races"][12]["how"], "manual")
         with self.assertRaises(ValueError):
-            races.set_unlocked("Vah Shir", True)
+            races.set_unlocked("A", "Vah Shir", True)
+
+    def test_characters_are_per_server(self):
+        # the same name on two servers: two separate characters, sharing nothing
+        p2 = os.path.join(self.logs, "eqlog_Tester_paineel.txt")
+        with open(p2, "w") as fh:
+            fh.write("[Sun Oct 11 20:00:00 2026] Welcome to EverQuest!\n")
+        self.app.poll()
+        p1 = os.path.join(self.logs, "eqlog_Tester_legends.txt")
+        with open(p2, "a") as fh:
+            fh.write("[Sun Oct 11 20:06:00 2026] --You have looted a Feathered Cape from a harpy.--\n"
+                     "[Sun Oct 11 20:06:01 2026] Your faction standing with Heretics has been adjusted by 5.\n")
+        self.app.poll()
+        self.assertEqual(self.app.sky.held_counts("Tester_paineel").get("feathered cape"), 1)
+        self.assertIsNone(self.app.sky.held_counts("Tester_legends").get("feathered cape"))
+        self.assertEqual([f["name"] for f in self.app.factions.view("Tester_paineel")["factions"]], ["Heretics"])
+        self.assertNotIn("Heretics", [f["name"] for f in self.app.factions.view("Tester_legends")["factions"]])
+        self.app.races.set_unlocked("Tester_paineel", "Ogre", True)
+        races = lambda c: {r["name"]: r["unlocked"] for r in self.app.races.view(c)["races"]}
+        self.assertTrue(races("Tester_paineel")["Ogre"])
+        self.assertFalse(races("Tester_legends")["Ogre"])
+        self.assertTrue(os.path.exists(p1))
+
+    def test_migrate_to_per_server(self):
+        from eqlc.core import App
+        ddir = os.path.join(self.tmp, "old")
+        os.makedirs(ddir)
+        old = {"offsets": {}, "sky": {"Tester": {"loot": [], "done": {"WAR:Test of Skill": {"t": 1, "how": "manual"}},
+                                                 "unlocked": [], "inventory": None}},
+               "quests": {"Tester": {"ticks": {}, "done": {}, "classes": ["Wizard"]}},
+               "crawls": {"runs": [{"id": 1, "char": "Tester", "zone": "Unrest", "raw": "", "status": "done"}],
+                          "active": {}},
+               "raid_kills": [{"t": 1, "boss": "Lord Nagafen", "char": "Tester"}],
+               "races": {"unlocked": {"Ogre": {"t": 1, "how": "manual"}}, "task": {}},
+               "custom_quests": [{"id": "custom-1", "name": "Mine", "items": []}]}
+        with open(os.path.join(ddir, "state.json"), "w") as fh:
+            json.dump(old, fh)
+        app = App(log_dir=self.logs, ddir=ddir)
+        st = app.state
+        self.assertIn("Tester_legends", st["sky"])
+        self.assertNotIn("Tester", st["sky"])
+        self.assertEqual(st["quests"]["Tester_legends"]["classes"], ["Wizard"])
+        self.assertEqual(st["crawls"]["runs"][0]["char"], "Tester_legends")
+        self.assertEqual(st["raid_kills"][0]["char"], "Tester_legends")
+        self.assertIn("Ogre", st["races"]["by_server"]["legends"]["unlocked"])
+        self.assertEqual(st["custom_quests"]["Tester_legends"][0]["id"], "custom-1")
+        self.assertEqual(st["per_server"], 1)
 
     def test_overlay_settings(self):
         app = self.app
@@ -407,14 +453,14 @@ class EndToEnd(unittest.TestCase):
         self.assertIsNone(tm.process("A", now, {"type": "death", "tgt": "a spiroc banisher"}, "East Freeport"))
         self.assertIsNone(tm.process("A", now, {"type": "death", "tgt": "a bat"}))
         self.assertIsNone(tm.process("A", now - 3600, {"type": "death", "tgt": "Gorgalosk"}))   # long expired
-        v = tm.view(now)
+        v = tm.view(now=now)
         self.assertEqual([x["mob"] for x in v], ["a spiroc walker", "Gorgalosk"])
         g = v[1]
         self.assertEqual(g["state"], "waiting")
         self.assertAlmostEqual(g["remaining"], 19 * 60, delta=1)
-        self.assertEqual([(x["mob"], x["state"]) for x in tm.view(now + 21 * 60)], [("Gorgalosk", "window")])
-        self.assertEqual(tm.view(now + 26 * 60)[0]["state"], "up")   # spiroc gone by now; gorga up
-        self.assertEqual(tm.view(now + 60 * 60), [])
+        self.assertEqual([(x["mob"], x["state"]) for x in tm.view(now=now + 21 * 60)], [("Gorgalosk", "window")])
+        self.assertEqual(tm.view(now=now + 26 * 60)[0]["state"], "up")   # spiroc gone by now; gorga up
+        self.assertEqual(tm.view(now=now + 60 * 60), [])
         # manual start for a mob without a rule needs minutes
         self.assertIsNone(tm.start_manual("Noble Dojorn"))
         self.assertIsNotNone(tm.start_manual("Noble Dojorn", minutes=30))
@@ -424,7 +470,7 @@ class EndToEnd(unittest.TestCase):
         self.app.poll()
         v = self.app.timers.view()
         self.assertEqual(len(v), 1)
-        self.assertEqual((v[0]["mob"], v[0]["zone"], v[0]["char"]), ("Gorgalosk", "Plane of Sky", "Tester"))
+        self.assertEqual((v[0]["mob"], v[0]["zone"], v[0]["char"]), ("Gorgalosk", "Plane of Sky", "Tester_legends"))
 
     def _feed(self, tr, lines, start=1000):
         for i, line in enumerate(lines):
@@ -556,7 +602,7 @@ class EndToEnd(unittest.TestCase):
             (300, "Bobbin has looted a Rusty Axe from Reward Chest."),       # anyone's chest loot ends it
             (400, "Crushbone is now available to you."),
             (410, "You have entered Crushbone 4 (Refined)."),
-            (420, "an orc pawn has been slain by Bobbin!"),
+            (420, "You have slain an orc pawn!"),
             (640, "--You have looted a Bone Chip from Reward Chest.--"),
             (700, "You have entered Crushbone 5 (Refined)."),         # farming: no "available" line
             (900, "You have entered Greater Faydark."),
@@ -579,6 +625,38 @@ class EndToEnd(unittest.TestCase):
         c.process("A", 1_000_000 + 900 + 31 * 60 + 100, parse_msg("You have slain a skeleton!"))
         o = c.overlay("A", now=1_000_000 + 900 + 31 * 60 + 130)
         self.assertEqual((o["state"], o["elapsed"]), ("active", 30))
+
+    def test_crawl_party_and_stop_reset(self):
+        c = self._crawl_log([
+            (0, "Unrest is now available to you."), (5, "You have entered Unrest 2 (Adaptive)."),
+            (8, "Gobaner tells you, 'Attacking a ghoul Master.'"),          # your pet: not a player
+            (10, "Gobaner hits a ghoul for 20 points of damage."),
+            (12, "You have slain a ghoul!"),
+            (60, "--You have looted a Gem from Reward Chest.--"),
+            (100, "Unrest is now available to you."), (105, "You have entered Unrest 3 (Adaptive)."),
+            (110, "Bobbin slashes a ghoul for 40 points of damage."),
+            (112, "a ghoul has been slain by Bobbin!"),
+            (150, "--You have looted a Gem from Reward Chest.--"),
+        ])
+        v = c.view("A", now=1_000_000 + 400)
+        self.assertEqual([(r["party"], r["players"]) for r in v["runs"]], [("group", ["Bobbin"]), ("solo", [])])
+        self.assertEqual(sorted((b["party"], b["best"]) for b in v["bests"]), [("group", 38), ("solo", 48)])
+        self.assertTrue(all(r["is_best"] for r in v["runs"]))          # separate bests for solo and group
+        # stop: ends the run now, kept but not "Logged live"
+        c.process("A", 1_000_000 + 200, parse_msg("Unrest is now available to you."), "x")
+        c.process("A", 1_000_000 + 210, parse_msg("You have slain a ghoul!"), "x")
+        r = c.stop("A", now=1_000_000 + 250)
+        self.assertEqual((r["status"], round(r["end"] - r["start"]), r["stopped"]), ("done", 40, True))
+        self.assertTrue(any("stopped by hand" in x for x in c._summary(r, 1_000_000 + 300)["proof"]["reasons"]))
+        self.assertIsNone(c.stop("A"))
+        # reset: back to 0:00, waiting for the next first kill
+        c.process("A", 1_000_000 + 300, parse_msg("Unrest is now available to you."), "x")
+        c.process("A", 1_000_000 + 310, parse_msg("You have slain a ghoul!"), "x")
+        c.reset("A", now=1_000_000 + 320)
+        o = c.overlay("A", now=1_000_000 + 330)
+        self.assertEqual((o["state"], o["elapsed"], o["kills"]), ("ready", 0, 0))
+        c.process("A", 1_000_000 + 340, parse_msg("You have slain a ghoul!"), "x")
+        self.assertEqual(c.overlay("A", now=1_000_000 + 360)["elapsed"], 20)
 
     def test_crawl_log_integrity(self):
         from eqlc.crawls import Crawls
@@ -728,11 +806,11 @@ class EndToEnd(unittest.TestCase):
             if any(r["status"] == "done" for r in self.app.crawls.runs):
                 break
             time.sleep(0.05)
-        runs = self.app.crawls.view("Tester")["runs"]
+        runs = self.app.crawls.view("Tester_legends")["runs"]
         self.assertEqual([(r["zone"], r["duration"], r["kills"]) for r in runs], [("Befallen", 690, 1)])
         # rescanning again doesn't duplicate
-        self.app.scan_crawl_history(path, "Tester")
-        self.assertEqual(len(self.app.crawls.view("Tester")["runs"]), 1)
+        self.app.scan_crawl_history(path, "Tester_legends")
+        self.assertEqual(len(self.app.crawls.view("Tester_legends")["runs"]), 1)
 
     def test_quests(self):
         from eqlc.quests import Quests
@@ -784,10 +862,11 @@ class EndToEnd(unittest.TestCase):
         self.assertTrue(v["pal-soulfire"]["done"])                  # SoulFire (the reward) is in your inventory
         self.assertEqual(v["pal-soulfire"]["done_how"], "reward seen")
         # custom quest sees items looted before it was created
-        cq = qs.save_custom({"name": "My quest", "cls": ["Wizard", "Nope"], "items": [{"n": "Spider Venom Sac"}, {"n": "a spider venom sac", "q": "x"}, {"n": ""}]})
+        cq = qs.save_custom("A", {"name": "My quest", "cls": ["Wizard", "Nope"], "items": [{"n": "Spider Venom Sac"}, {"n": "a spider venom sac", "q": "x"}, {"n": ""}]})
         self.assertEqual((cq["cls"], len(cq["items"]), cq["items"][1]["q"]), (["Wizard"], 2, 1))
         v = {q["id"]: q for q in qs.view("A")["quests"]}
         self.assertTrue(v[cq["id"]]["items"][1]["ok"])
+        self.assertNotIn(cq["id"], {q["id"] for q in qs.view("A_otherserver")["quests"]})   # not shared
         self.assertEqual(v["war-epic"]["banner"], "Not available pre-Kunark")
         self.assertEqual(v["enc-tashania"]["banner"], "")
 
@@ -886,22 +965,22 @@ class EndToEnd(unittest.TestCase):
         self.app.state["offsets"][path] = os.path.getsize(path)
         self.app.poll()
         for _ in range(60):
-            if self.app.raids.kills and self.app.quests.ledger.get("Tester"):
+            if self.app.raids.kills and self.app.quests.ledger.get("Tester_legends"):
                 break
             time.sleep(0.05)
         self.assertEqual([(k["boss"], k["level"]) for k in self.app.raids.kills], [("Lord Nagafen", 4)])
-        self.assertEqual(self.app.factions.view("Tester")["factions"][0]["net"], 7)
-        self.assertEqual(self.app.quests.ledger["Tester"][0][1], "Glowing Sword Hilt")
+        self.assertEqual(self.app.factions.view("Tester_legends")["factions"][0]["net"], 7)
+        self.assertEqual(self.app.quests.ledger["Tester_legends"][0][1], "Glowing Sword Hilt")
         # new lines are tracked live too
         with open(path, "a") as fh:
             fh.write("[Sun Oct 11 21:00:00 2026] Your faction standing with Kobolds of Sol has been adjusted by -2.\n")
         self.app.poll()
-        self.assertEqual(self.app.factions.view("Tester")["factions"][0]["net"], 5)
+        self.assertEqual(self.app.factions.view("Tester_legends")["factions"][0]["net"], 5)
         # scanning is one-off per log for additive data
         self.app.files.clear()
         self.app.poll()
         time.sleep(0.3)
-        self.assertEqual(self.app.factions.view("Tester")["factions"][0]["net"], 5)
+        self.assertEqual(self.app.factions.view("Tester_legends")["factions"][0]["net"], 5)
 
     def test_http(self):
         srv = serve(self.app)
@@ -914,10 +993,10 @@ class EndToEnd(unittest.TestCase):
                 with urllib.request.urlopen(base + p) as r:
                     self.assertEqual(r.status, 200, p)
             req = urllib.request.Request(base + "/api/sky/done", method="POST",
-                                         data=json.dumps({"char": "Tester", "id": "WAR:Test of Skill", "done": True}).encode())
+                                         data=json.dumps({"char": "Tester_legends", "id": "WAR:Test of Skill", "done": True}).encode())
             with urllib.request.urlopen(req) as r:
                 self.assertEqual(json.load(r)["ok"], True)
-            with urllib.request.urlopen(base + "/api/sky?char=Tester") as r:
+            with urllib.request.urlopen(base + "/api/sky?char=Tester_legends") as r:
                 v = json.load(r)
             war = [c for c in v["classes"] if c["name"] == "Warrior"][0]
             self.assertEqual(war["done"], 1)

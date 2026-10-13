@@ -1,7 +1,7 @@
 """Race unlock tracker (data in races_data.py, from EQLWiki).
 
-Race unlocks are achievements, so they're tracked for the account, not per
-character. Faction progress comes from the Factions tracker: a faction counts
+Race unlocks are achievements, so they're shared by your characters on the
+same server (nothing is shared between servers). Faction progress comes from the Factions tracker: a faction counts
 as maxed once any of your characters' logs say "Your faction standing with X
 could not possibly get any better." A race whose factions are all maxed (by
 one character - personal faction) is shown as unlocked; you can also tick a
@@ -25,33 +25,46 @@ def fkey(name):
 
 class Races:
     def __init__(self, state, factions):
-        self.s = state.setdefault("races", {"unlocked": {}, "task": {}})
-        self.s.setdefault("unlocked", {})
-        self.s.setdefault("task", {})
+        root = state.setdefault("races", {})
+        self.all = root.setdefault("by_server", {})     # server -> {"unlocked", "task"}: nothing shared between servers
         self.factions = factions
         self.dirty = False
 
-    def set_unlocked(self, race, on):
+    @staticmethod
+    def server(char):
+        return (char or "").partition("_")[2] or "-"
+
+    def _s(self, char):
+        s = self.all.setdefault(self.server(char), {})
+        s.setdefault("unlocked", {})
+        s.setdefault("task", {})
+        return s
+
+    def set_unlocked(self, char, race, on):
         if not any(r["name"] == race for r in D.RACES):
             raise ValueError("unknown race")
+        s = self._s(char)
         if on:
-            self.s["unlocked"][race] = {"t": time.time(), "how": "manual"}
+            s["unlocked"][race] = {"t": time.time(), "how": "manual"}
         else:
-            self.s["unlocked"].pop(race, None)
+            s["unlocked"].pop(race, None)
         self.dirty = True
 
-    def set_step(self, step, on):
+    def set_step(self, char, step, on):
+        s = self._s(char)
         if on:
-            self.s["task"][step] = time.time()
+            s["task"][step] = time.time()
         else:
-            self.s["task"].pop(step, None)
+            s["task"].pop(step, None)
         self.dirty = True
 
     # -- faction status --------------------------------------------------------
-    def _faction_index(self):
-        """faction key -> {char: row} from every character's faction tracking."""
+    def _faction_index(self, server):
+        """faction key -> {char: row} from every character's faction tracking on this server."""
         idx = {}
         for char in list(self.factions.s):
+            if self.server(char) != server:
+                continue
             for row in self.factions.view(char)["factions"]:
                 idx.setdefault(fkey(row["name"]), {})[char] = row
         return idx
@@ -68,7 +81,8 @@ class Races:
 
     # -- view --------------------------------------------------------------------
     def view(self, char):
-        idx = self._faction_index()
+        idx = self._faction_index(self.server(char))
+        st = self._s(char)
         out, by_name = [], {}
         for r in D.RACES:
             u = r["unlock"]
@@ -82,7 +96,7 @@ class Races:
             elif "task" in u:
                 t = u["task"]
                 row["task"] = {"name": t["name"], "wiki": t["wiki"], "start": t["start"], "note": t["note"]}
-                row["steps"] = [{"name": n, "info": i, "done": n in self.s["task"]} for n, i in t["steps"]]
+                row["steps"] = [{"name": n, "info": i, "done": n in st["task"]} for n, i in t["steps"]]
             elif "any_race" in u:
                 row["needs_race"] = u["any_race"]
             for g in row["groups"]:
@@ -93,7 +107,7 @@ class Races:
             by_name[r["name"]] = row
         # unlocked: ticked, all factions maxed, task finished, or (Half-Elf) a parent race unlocked
         for row in out:
-            man = self.s["unlocked"].get(row["name"])
+            man = st["unlocked"].get(row["name"])
             how = "manual" if man else None
             if not how and row["groups"] and any(g["complete"] for g in row["groups"]):
                 how = "factions maxed"

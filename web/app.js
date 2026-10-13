@@ -39,12 +39,14 @@ $$('[data-open]').forEach(b => b.onclick = async () => {
   setTimeout(() => b.textContent = label, 2000);
 });
 
+// characters are per server: "Sahkage_rivervale" is shown as "Sahkage (rivervale)"
+const charLabel = c => { if (!c) return '—'; const i = c.indexOf('_'); return i < 0 ? c : `${c.slice(0, i)} (${c.slice(i + 1)})`; };
 function fillChars(list, active) {
   const sel = $('#charsel');
   const want = ['', ...list];
   const cur = [...sel.options].map(o => o.value);
-  if (JSON.stringify(cur) !== JSON.stringify(want) || sel.options[0]?.text !== `Active: ${active || '—'}`) {
-    sel.innerHTML = want.map(v => `<option value="${esc(v)}">${v ? esc(v) : 'Active: ' + esc(active || '—')}</option>`).join('');
+  if (JSON.stringify(cur) !== JSON.stringify(want) || sel.options[0]?.text !== `Active: ${charLabel(active)}`) {
+    sel.innerHTML = want.map(v => `<option value="${esc(v)}">${v ? esc(charLabel(v)) : 'Active: ' + esc(charLabel(active))}</option>`).join('');
     sel.value = char;
   }
 }
@@ -178,7 +180,7 @@ async function refreshSky() {
     const d = await get('/api/sky?' + q());
     if (!d || !d.char) { $('#classes').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
     const unlocked = d.classes.filter(c => c.unlocked).length;
-    $('#sky-sum').textContent = `${d.char}: ${d.done}/${d.total} tests done · ${unlocked}/${d.classes.length} classes unlocked` +
+    $('#sky-sum').textContent = `${charLabel(d.char)}: ${d.done}/${d.total} tests done · ${unlocked}/${d.classes.length} classes unlocked` +
       (d.inventory ? ` · inventory: ${d.inventory.source}, ${dt(d.inventory.t)}` : ' · tip: /outputfile inventory, then Import inventory…');
     const hideDone = $('#hide-done').checked, onlyReady = $('#only-ready').checked;
     $('#classes').innerHTML = d.classes.filter(c => !(hideDone && c.unlocked)).map(c => {
@@ -256,7 +258,7 @@ $('#proof-file').onchange = async e => {
   const r = await post('/api/crawls/verify', {text: await f.text()});
   const v = r.verdict || {};
   openModal(`<h2>Proof check: ${esc(f.name)}</h2>
-    ${r.char ? `<p><b>${esc(r.char)}</b> · ${esc(r.zone || '')} ${esc(r.tier || '')} · ${r.duration != null ? hms(r.duration) : '—'} · ${r.lines || 0} log lines</p>` : ''}
+    ${r.char ? `<p><b>${esc(charLabel(r.char))}</b> · ${esc(r.zone || '')} ${esc(r.tier || '')} · ${r.duration != null ? hms(r.duration) : '—'} · ${r.lines || 0} log lines</p>` : ''}
     <div class="proof-box ${r.ok ? (v.status || 'unverified') : 'suspicious'}">
       <b>${r.ok ? 'File intact: the lines match the hash chain and the times.' : '⚠ This file has problems'}</b>
       <ul>${(r.problems || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
@@ -517,6 +519,9 @@ const hms = s => {
 const lvlChip = r => `<span class="lvl-chip l${r.level ?? 0}">${esc(r.tier_label)}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
 const deltaHtml = d => d == null ? '' : d === 0 ? '<span class="delta ahead">best</span>'
   : `<span class="delta ${d < 0 ? 'ahead' : 'behind'}">${d < 0 ? '−' : '+'}${hms(Math.abs(d))}</span>`;
+const partyChip = r => r.party === 'group'
+  ? `<span class="party group" title="${esc((r.players || []).join(', ') || 'Group instance')}">Multiplayer${r.players && r.players.length ? ' · ' + (r.players.length + 1) : ''}</span>`
+  : '<span class="party solo">Solo</span>';
 const motesTxt = mt => Object.entries(mt || {}).map(([k, v]) => `${v} ${k === 'potential' ? 'plain' : k}`).join(', ') || '—';
 
 function crawlNow(d) {
@@ -524,9 +529,10 @@ function crawlNow(d) {
   if (c) {
     const vs = c.pb != null ? c.duration - c.pb : null;
     return `<div class="panel-h"><span>${c.away_now ? 'Crawl paused — you are outside the instance' : 'Current run'}</span>
-        <span class="btns" style="margin:0"><button class="ghost" id="crawl-restart" title="Start the timer from now">Restart timer</button>
+        <span class="btns" style="margin:0"><button class="ghost" id="crawl-stop" title="End this run now and keep its time">Stop timer</button>
+        <button class="ghost" id="crawl-reset" title="Back to 0:00: the timer starts again on your next kill">Reset timer</button>
         <button class="ghost" id="crawl-discard" title="This is a normal instance, not a crawl">Not a crawl</button></span></div>
-      <div><b>${esc(c.zone)}</b> ${lvlChip(c)}</div>
+      <div><b>${esc(c.zone)}</b> ${lvlChip(c)} ${partyChip(c)}</div>
       <div class="crawl-live"><span class="big ${c.away_now ? 'away' : ''}">${hms(c.duration)}</span>
         ${c.pb != null ? `<span class="pbline">best <b>${hms(c.pb)}</b> ${deltaHtml(vs)}</span>` : '<span class="pbline">first timed run here</span>'}</div>
       <div class="crawl-stats">
@@ -538,13 +544,13 @@ function crawlNow(d) {
       <p class="hint">${c.waiting_kill ? `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it` : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. It ends when the first item is looted from the Reward Chest.</p>`;
   }
   if (j) return `<div class="panel-h"><span>Crawl complete${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
-      <div><b>${esc(j.zone)}</b> ${lvlChip(j)}</div>
+      <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${partyChip(j)}</div>
       <div class="crawl-live"><span class="big done">${hms(j.duration)}</span>
         ${j.pb != null ? `<span class="pbline">previous best <b>${hms(j.pb)}</b> ${deltaHtml(j.duration - j.pb)}</span>` : ''}</div>
       <div class="crawl-stats"><div><label>Kills</label><b>${j.kills}</b></div><div><label>Deaths</label><b>${j.deaths}</b></div>
         <div><label>Motes</label><b>${j.motes}</b></div></div>`;
   const w = d.where;
-  return `<div class="panel-h">Current run</div><div class="muted" style="padding:6px 0 4px">Not in a crawl.
+  return `<div class="panel-h"><span>Current run</span>${w && w.inst ? '<span class="btns" style="margin:0"><button class="ghost" id="crawl-reset" title="Start timing this instance: the timer starts on your next kill">Start timing here</button></span>' : ''}</div><div class="muted" style="padding:6px 0 4px">Not in a crawl.
       The timer is set up by “&lt;zone&gt; is now available to you.” and starts on your first kill in that zone${w ? ` (you're in ${esc(w.zone)})` : ''}.</div>`;
 }
 
@@ -552,12 +558,19 @@ async function refreshCrawls() {
   const d = await get('/api/crawls?' + q());
   if (!d || !d.char) { $('#crawl-now').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
   $('#crawl-now').innerHTML = crawlNow(d);
-  $('#crawl-restart')?.addEventListener('click', async () => { await post('/api/crawls/restart', {char}); refreshCrawls(); });
+  $('#crawl-stop')?.addEventListener('click', async () => {
+    if (confirm('Stop the timer and save this run with its current time?')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
+  });
+  $('#crawl-reset')?.addEventListener('click', async () => {
+    const r = await post('/api/crawls/reset', {char});
+    if (r && r.ok === false) alert(r.error);
+    refreshCrawls();
+  });
   $('#crawl-discard')?.addEventListener('click', async () => {
     if (confirm('Stop timing this instance? Use this for normal (non-crawl) instances.')) { await post('/api/crawls/discard', {char}); refreshCrawls(); }
   });
-  $('#crawl-bests').innerHTML = d.bests.length ? `<table><tr><th>Zone</th><th>Difficulty</th><th>Runs</th><th>Best</th><th>Average</th><th>Last</th></tr>
-    ${d.bests.map(b => `<tr><td>${esc(b.zone)}</td><td>${lvlChip(b)}</td><td>${b.runs}</td><td class="gold"><b>${hms(b.best)}</b></td>
+  $('#crawl-bests').innerHTML = d.bests.length ? `<table><tr><th>Zone</th><th>Difficulty</th><th>Party</th><th>Runs</th><th>Best</th><th>Average</th><th>Last</th></tr>
+    ${d.bests.map(b => `<tr><td>${esc(b.zone)}</td><td>${lvlChip(b)}</td><td>${partyChip(b)}</td><td>${b.runs}</td><td class="gold"><b>${hms(b.best)}</b></td>
       <td>${hms(b.avg)}</td><td>${hms(b.last)} ${deltaHtml(b.last - b.best || null)}</td></tr>`).join('')}</table>`
     : '<div class="muted">Complete a crawl to set your first time.</div>';
   // history
@@ -570,17 +583,17 @@ async function refreshCrawls() {
   const showAll = $('#crawl-unfinished').checked;
   const runs = d.runs.filter(r => (!zsel.value || r.zone === zsel.value) && (showAll || r.status !== 'left'));
   $('#crawl-runs').innerHTML = runs.length ? `<table>
-    <tr><th>When</th><th>Zone</th><th>Difficulty</th><th>Duration</th><th>vs best</th><th>Kills</th><th>Deaths</th><th>Motes</th><th>Motes/hr</th><th>Refund</th><th title="Did the app see this run being logged live by the game?">Log check</th></tr>
+    <tr><th>When</th><th>Zone</th><th>Difficulty</th><th>Party</th><th>Duration</th><th>vs best</th><th>Kills</th><th>Deaths</th><th>Motes</th><th>Motes/hr</th><th>Refund</th><th title="Did the app see this run being logged live by the game?">Log check</th></tr>
     ${runs.map(r => {
       const status = r.status === 'active' ? '<span class="badge">LIVE</span>' : r.status === 'left' ? '<span class="muted">not completed</span>' : '';
       const refund = r.refund === true ? '✓' : r.refund === false ? '<span class="red" title="Too easy for a recharge">✗</span>' : '—';
       const row = `<tr class="run click ${r.status === 'done' ? '' : 'notdone'}" data-run="${r.id}">
-        <td>${dt(r.start)}</td><td>${esc(r.zone)} ${status}</td><td>${lvlChip(r)}</td>
+        <td>${dt(r.start)}</td><td>${esc(r.zone)} ${status}</td><td>${lvlChip(r)}</td><td>${partyChip(r)}</td>
         <td><span class="dur">${hms(r.duration)}</span>${r.is_best ? '<span class="pb">★ PB</span>' : ''}${r.start_known ? '' : ' <span class="muted" title="Logging started mid-crawl">(start unknown)</span>'}</td>
         <td>${deltaHtml(r.vs_best)}</td><td>${r.kills}</td><td>${r.deaths || '—'}</td><td>${r.motes || '—'}</td>
         <td>${r.motes_per_hour != null && r.motes ? dps(r.motes_per_hour) : '—'}</td><td>${refund}</td><td>${proofBadge(r.proof)}</td></tr>`;
       if (openRun !== r.id) return row;
-      return row + `<tr class="rundetail"><td colspan="11"><div class="rd">
+      return row + `<tr class="rundetail"><td colspan="12"><div class="rd">
         <div class="wide proof-box ${r.proof.status}"><b>${PROOF_LABEL[r.proof.status] || r.proof.status}</b>
           <ul>${r.proof.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
           ${r.status !== 'active' ? `<button class="ghost" data-proof="${r.id}">Export proof file</button>` : ''}</div>
@@ -591,6 +604,7 @@ async function refreshCrawls() {
         <div><span>Time to first kill:</span> ${hms(r.to_first_kill)}</div>
         <div><span>In combat:</span> ${r.combat != null ? `${hms(r.combat)} · downtime ${hms(Math.max(0, r.inside - r.combat))}` : 'not available (older than the loaded fight history)'}</div>
         <div><span>Motes:</span> ${motesTxt(r.motes_tiers)}</div>
+        <div><span>Party:</span> ${r.party === 'group' ? `multiplayer${r.players.length ? ' with ' + r.players.map(esc).join(', ') : ''}` : 'solo'}${r.stopped ? ' · <span class="muted">timer stopped by hand</span>' : ''}</div>
         <div><span>Experience:</span> ${r.xp ? r.xp.toFixed(2) + '%' : '—'}${r.reward_xp ? ' (incl. crawl reward)' : ''}</div>
         <div class="wide"><span>Reward chest:</span> ${r.chest.length ? r.chest.map(c => `${esc(c.item)}${c.qty > 1 ? ' ×' + c.qty : ''}`).join(', ') : '—'}</div>
         ${r.notes.length ? `<div class="wide"><span>Messages:</span> ${r.notes.map(esc).join(' · ')}</div>` : ''}
@@ -1019,7 +1033,7 @@ $('#inv-file').onchange = async e => {
   const r = await post('/api/inventory/import', {text, filename: f.name, char: invChar, mtime: f.lastModified});
   if (!r || !r.ok) { alert((r && r.error) || 'Could not read that file'); return; }
   const n = (r.sky_ticked || []).length;
-  alert(`Imported ${r.items.toLocaleString()} items for ${r.char}.` + (n ? `\n${n} Plane of Sky test${n === 1 ? '' : 's'} ticked from rewards you own.` : ''));
+  alert(`Imported ${r.items.toLocaleString()} items for ${charLabel(r.char)}.` + (n ? `\n${n} Plane of Sky test${n === 1 ? '' : 's'} ticked from rewards you own.` : ''));
   if (tab === 'sky') refreshSky(); else refreshQuests(true);
 };
 
@@ -1078,8 +1092,8 @@ async function refreshSettings(force) {
   fillChars(d.characters, d.active);
   if (tab !== 'settings' || (settingsLoaded && !force)) return;
   settingsLoaded = true;
-  $('#set-status').textContent = d.status === 'ok' ? `Reading logs. Active character: ${d.active}` : d.status;
-  $('#s-character').innerHTML = '<option value="">Follow active log</option>' + d.characters.map(c => `<option>${esc(c)}</option>`).join('');
+  $('#set-status').textContent = d.status === 'ok' ? `Reading logs. Active character: ${charLabel(d.active)}` : d.status;
+  $('#s-character').innerHTML = '<option value="">Follow active log</option>' + d.characters.map(c => `<option value="${esc(c)}">${esc(charLabel(c))}</option>`).join('');
   for (const k of FIELDS) {
     const el = $('#s-' + k), v = d.cfg[k];
     if (el.type === 'checkbox') el.checked = !!v;
