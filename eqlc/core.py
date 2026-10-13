@@ -31,6 +31,7 @@ DEFAULTS = {
     "motes_window_on_start": True,  # open the in-game motes window when the app starts
     "crawl_window_on_start": True,  # open the in-game dungeon crawl timer window when the app starts
     "timers": [],                 # [{"mob", "minutes", "variance", "zone"}] respawn timer rules
+    "use_browser": False,         # open the dashboard in the web browser instead of the app window
     "crawl_on_overlay": True,     # show the live dungeon crawl timer on the DPS overlay
     "timers_on_overlay": True,    # show respawn timers on the DPS overlay
     "overlay_look": {},           # kind -> {"alpha", "locked", "scale", "rev"} (Overlays tab / right-click)

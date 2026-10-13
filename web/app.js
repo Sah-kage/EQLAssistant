@@ -1082,7 +1082,7 @@ async function refreshOverlays(force) {
 $$('[data-goto]').forEach(b => b.onclick = () => document.querySelector(`nav button[data-tab="${b.dataset.goto}"]`).click());
 
 // ---------- settings ----------
-const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'include_pets', 'pet_names'];
+const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names'];
 let settingsLoaded = false;
 async function refreshSettings(force) {
   const d = await get('/api/settings');

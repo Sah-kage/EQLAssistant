@@ -51,6 +51,24 @@ def close_overlay_window(kind=None):
             p.terminate()
 
 
+def log_path():
+    from .core import data_dir
+    return os.path.join(data_dir(), "eqlassistant.log")
+
+
+def log(msg):
+    """Startup / window problems go to EQLAssistant's data folder (the .exe has no console)."""
+    import time as _t
+    try:
+        p = log_path()
+        if os.path.exists(p) and os.path.getsize(p) > 512 * 1024:
+            os.replace(p, p + ".old")
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(_t.strftime("%Y-%m-%d %H:%M:%S ") + str(msg).rstrip() + "\n")
+    except Exception:
+        pass
+
+
 def notify(msg, title="EQL Assistant"):
     """Show a message even when there is no console window (windowed .exe)."""
     if sys.platform == "win32":

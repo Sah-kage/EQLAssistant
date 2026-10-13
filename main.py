@@ -8,6 +8,7 @@ Usage (from source or as EQLAssistant.exe):
     main.py --overlay-only        just the overlay window (app must already be running)
 """
 import argparse
+import os
 import sys
 import threading
 import time
@@ -34,7 +35,7 @@ def main():
 
     from eqlc import gui
     from eqlc.core import App
-    from eqlc.launch import close_overlay_window, notify, open_overlay_window, set_app_id
+    from eqlc.launch import close_overlay_window, log, log_path, notify, open_overlay_window, set_app_id
     set_app_id()
     from eqlc.server import serve
 
@@ -77,10 +78,37 @@ def main():
         srv.shutdown()
 
     # Preferred: a real desktop window. Blocks until the user closes it.
-    if not a.browser and not a.no_browser and gui.available():
+    use_window = not a.browser and not a.no_browser and not app.cfg.get("use_browser")
+    no_webview2 = use_window and not gui.webview2_installed()
+    if no_webview2:
+        log("Edge WebView2 Runtime not found in the registry; trying the app window anyway")
+    if use_window and gui.crashed_last_time(app):
+        # the last start closed while opening the window (crashed): use the browser from now on
+        log("app window crashed last time; switching to the web browser")
+        try:
+            os.remove(os.path.join(app.ddir, "window_starting"))
+        except OSError:
+            pass
+        app.cfg["use_browser"] = True
+        app.save_cfg()
+        notify("EQL Assistant closed while opening its app window last time, so it will use your web browser "
+               "from now on. Everything works the same there.\n\n"
+               "To try the app window again, untick \"Open in my web browser\" in Settings." +
+               (f"\n\nThe app window needs the Microsoft Edge WebView2 Runtime (free from Microsoft):\n"
+                f"{gui.WEBVIEW2_URL}" if no_webview2 else ""))
+        use_window = False
+    if use_window and gui.available():
         if gui.run(app, url):
             shutdown()
             return
+        app.cfg["use_browser"] = True          # don't keep trying (and failing) every start
+        app.save_cfg()
+        notify("EQL Assistant couldn't open its own window, so it's opening in your web browser instead. "
+               "Everything works the same there, and it will use the browser from now on "
+               "(untick \"Open in my web browser\" in Settings to try the app window again).\n\n" +
+               ("The app window needs the Microsoft Edge WebView2 Runtime, which doesn't seem to be installed. "
+                f"It's free from Microsoft:\n{gui.WEBVIEW2_URL}\n\n" if no_webview2 else "") +
+               f"Details are in {log_path()}")
 
     # Fallback: dashboard in the web browser, console keeps the app alive.
     if not a.no_browser:
@@ -95,4 +123,19 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:                       # the .exe has no console: never fail silently
+        import traceback
+        err = traceback.format_exc()
+        try:
+            from eqlc.launch import log, log_path, notify
+            log("crashed: " + err)
+            notify("EQL Assistant hit a problem and had to close.\n\n"
+                   f"Details are in {log_path()}\n\nTry starting it with --browser, and send the log file to "
+                   "the developer.")
+        except Exception:
+            print(err)
+        raise

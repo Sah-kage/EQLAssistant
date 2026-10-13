@@ -307,6 +307,18 @@ If the window can't start, EQL Assistant opens in your web browser instead and w
 - Run the tests with `python -m unittest discover tests`.
 - If you put the project on GitHub, `.github/workflows/build-exe.yml` builds the .exe on GitHub's Windows machines on every push.
 
+## If the app window doesn't open
+
+EQL Assistant's own window uses the **Microsoft Edge WebView2 Runtime**. It's built into Windows 11 and most up-to-date Windows 10 PCs, but some PCs don't have it.
+
+- **The window fails to open:** the app now switches to your web browser by itself, with a message saying so, and keeps using the browser from then on. Everything works the same there.
+- **The app closes while opening its window:** the next start goes straight to the browser.
+- **Get the app window back:**
+  - Install WebView2 from https://developer.microsoft.com/microsoft-edge/webview2/ (choose the "Evergreen Bootstrapper").
+  - Untick **Open in my web browser** in Settings.
+- **Force the browser** at any time: tick **Open in my web browser** in Settings, or start it with `EQLAssistant.exe --browser`. In PowerShell, type `.\EQLAssistant.exe --browser`.
+- **What went wrong** is written to `%APPDATA%\EQLAssistant\eqlassistant.log`. Please include that file when reporting a problem.
+
 ## Icon
 
 The wizard icon (`assets/icon.ico`) is used for `EQLAssistant.exe`, the app window's title bar and taskbar button, and the logo inside the app.

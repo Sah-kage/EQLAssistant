@@ -6,12 +6,51 @@ import os
 import sys
 
 
+WEBVIEW2_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
+_WEBVIEW2_KEY = r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
 def available():
     try:
         import webview  # noqa: F401
         return True
-    except Exception:
+    except Exception as e:
+        from .launch import log
+        log(f"app window library not available: {e!r}")
         return False
+
+
+def webview2_installed():
+    """The app window needs Microsoft's Edge WebView2 Runtime (built into Windows 11 and most
+    up-to-date Windows 10 PCs). Without it the window can't open."""
+    if sys.platform != "win32":
+        return True
+    try:
+        import winreg
+    except ImportError:
+        return True
+    places = [(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node" + _WEBVIEW2_KEY[8:]),
+              (winreg.HKEY_LOCAL_MACHINE, _WEBVIEW2_KEY),
+              (winreg.HKEY_CURRENT_USER, _WEBVIEW2_KEY)]
+    for root, key in places:
+        try:
+            with winreg.OpenKey(root, key) as k:
+                v, _ = winreg.QueryValueEx(k, "pv")
+                if v and v != "0.0.0.0":
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _marker(app):
+    return os.path.join(app.ddir, "window_starting")
+
+
+def crashed_last_time(app):
+    """True if the last attempt to open the app window never got as far as showing it
+    (e.g. the program closed straight away). Then we use the web browser instead."""
+    return os.path.exists(_marker(app))
 
 
 class Api:
@@ -69,7 +108,23 @@ def run(app, url, on_close=None):
         import webview
     except Exception:
         return False
+    from .launch import log
     api = Api(app)
+    shown = {"ok": False}
+    marker = _marker(app)
+    try:
+        with open(marker, "w") as fh:
+            fh.write("starting")
+    except OSError:
+        pass
+
+    def on_shown():
+        shown["ok"] = True
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
+        _set_window_icon(win)
     try:
         win = webview.create_window(
             "EQL Assistant", url, js_api=api,
@@ -78,7 +133,7 @@ def run(app, url, on_close=None):
         app.gui_window = win
         if on_close:
             win.events.closed += on_close
-        win.events.shown += lambda: _set_window_icon(win)
+        win.events.shown += on_shown
         storage = os.path.join(app.ddir, "webview")
         os.makedirs(storage, exist_ok=True)
         from .launch import ICON
@@ -86,11 +141,25 @@ def run(app, url, on_close=None):
             webview.settings["ALLOW_DOWNLOADS"] = True       # "Download a copy" of a crawl proof
         except Exception:
             pass
+        # Windows: only Edge WebView2. Without this pywebview may fall back to the old
+        # Internet Explorer engine, which can't run the app's page.
+        gui_name = "edgechromium" if sys.platform == "win32" else None
         try:
-            webview.start(private_mode=False, storage_path=storage, icon=ICON)
+            webview.start(gui=gui_name, private_mode=False, storage_path=storage, icon=ICON)
         except TypeError:                     # older pywebview without icon=
-            webview.start(private_mode=False, storage_path=storage)
+            webview.start(gui=gui_name, private_mode=False, storage_path=storage)
+        if not shown["ok"]:
+            log("app window closed without ever showing; falling back to the web browser")
+            return False
         return True
     except Exception as e:  # e.g. WebView2 runtime missing
+        import traceback
+        log("app window failed: " + traceback.format_exc())
         app.status = f"app window failed ({e}); using browser"
         return False
+    finally:
+        # Got this far (shown or failed cleanly), so the program didn't crash: clear the marker.
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
