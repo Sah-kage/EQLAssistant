@@ -138,6 +138,39 @@ class EndToEnd(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(self.app.sky.char("Tester_legends")["done"][qid]["how"], "history")
 
+    def test_sky_filters(self):
+        from eqlc.sky import SkyTracker, CLASSES
+        import time as _t
+        sk = SkyTracker({})
+        ch = "Tester_legends"
+        q = CLASSES[0]["quests"][0]
+        for c in CLASSES:                               # every other quest finished, so nothing else needs the items
+            for q2 in c["quests"]:
+                if q2["id"] != q["id"]:
+                    sk.set_done(ch, q2["id"], True)
+        _t.sleep(0.01)
+
+        def row():
+            v = sk.view(ch)
+            return v, next(x for c in v["classes"] for x in c["quests"] if x["id"] == q["id"])
+        for it in q["items"]:
+            sk.adjust(ch, it["name"], 1)
+        v, x = row()
+        self.assertTrue(x["ready"] and not x["again"])
+        self.assertEqual(v["spare"], [])
+        _t.sleep(0.01)
+        sk.mark_done(ch, q["id"], _t.time(), "log")     # reward seen in the log: the items were handed in
+        v, x = row()
+        self.assertFalse(x["ready"] or x["again"])
+        _t.sleep(0.01)
+        for it in q["items"]:
+            sk.adjust(ch, it["name"], 1)                # got them all again
+        v, x = row()
+        self.assertTrue(x["again"] and not x["ready"])
+        spare = {s["name"]: s for s in v["spare"]}
+        self.assertEqual(set(spare), {it["name"] for it in q["items"]})        # no unfinished quest needs them
+        self.assertTrue(all(s["need"] == 0 and s["spare"] == 1 for s in spare.values()))
+
     def test_inventory_export_import(self):
         from eqlc.inventory import parse, char_from_filename, base_name
         text = ("Location\tName\tID\tCount\tSlots\n"

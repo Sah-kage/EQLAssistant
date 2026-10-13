@@ -167,7 +167,9 @@ $('#clear-fights').onclick = async () => {
 };
 
 // ---------- plane of sky ----------
-$('#hide-done').onchange = $('#only-ready').onchange = () => refreshSky();
+$('#hide-done').onchange = () => refreshSky();
+$('#q-filter').value = localStorageGet('eqlc-qfilter') || 'all';
+$('#q-filter').onchange = () => { localStorageSet('eqlc-qfilter', $('#q-filter').value); refreshSky(); };
 $$('.seg button').forEach(b => b.onclick = () => {
   skySrc = b.dataset.src; $$('.seg button').forEach(x => x.classList.toggle('on', x === b)); refreshSky();
 });
@@ -182,11 +184,12 @@ async function refreshSky() {
     const unlocked = d.classes.filter(c => c.unlocked).length;
     $('#sky-sum').textContent = `${charLabel(d.char)}: ${d.done}/${d.total} tests done · ${unlocked}/${d.classes.length} classes unlocked` +
       (d.inventory ? ` · inventory: ${d.inventory.source}, ${dt(d.inventory.t)}` : ' · tip: /outputfile inventory, then Import inventory…');
-    const hideDone = $('#hide-done').checked, onlyReady = $('#only-ready').checked;
-    $('#classes').innerHTML = d.classes.filter(c => !(hideDone && c.unlocked)).map(c => {
-      const qs = c.quests.filter(x => !onlyReady || x.ready);
-      if (onlyReady && !qs.length) return '';
-      const coll = collapsed.has(c.name) && !onlyReady;
+    const qf = $('#q-filter').value, filtered = qf !== 'all';
+    const hideDone = $('#hide-done').checked && qf !== 'again';     // finished classes are where "ready again" quests are
+    const html = d.classes.filter(c => !(hideDone && c.unlocked)).map(c => {
+      const qs = c.quests.filter(x => qf === 'ready' ? x.ready : qf === 'again' ? x.again : true);
+      if (filtered && !qs.length) return '';
+      const coll = collapsed.has(c.name) && !filtered;
       return `<div class="cls ${c.unlocked ? 'unlocked' : ''} ${coll ? 'collapsed' : ''}" data-cls="${esc(c.name)}">
         <div class="cls-h"><span class="nm">${esc(c.name)}<small>${esc(c.npc)}</small></span>
           ${c.unlocked ? '<span class="badge">UNLOCKED</span>' : ''}
@@ -195,13 +198,14 @@ async function refreshSky() {
           <div class="q ${x.done ? 'done' : ''} ${x.ready ? 'ready' : ''}">
             <input type="checkbox" data-q="${esc(x.id)}" ${x.done ? 'checked' : ''} title="Mark turned in">
             <div class="t">${esc(x.name)} <span class="rw">→ ${esc(x.reward)}</span>
-              ${x.ready ? '<span class="tag">READY TO TURN IN</span>' : ''}${x.how && x.how !== 'manual' ? `<span class="tag muted">(${{log: 'reward seen in log', history: 'reward found in older logs', inventory: 'reward in inventory'}[x.how] || x.how})</span>` : ''}</div>
+              ${x.ready ? '<span class="tag">READY TO TURN IN</span>' : ''}${x.again ? '<span class="tag again" title="You turned this in before and hold all its items again">READY AGAIN</span>' : ''}${x.how && x.how !== 'manual' ? `<span class="tag muted">(${{log: 'reward seen in log', history: 'reward found in older logs', inventory: 'reward in inventory'}[x.how] || x.how})</span>` : ''}</div>
             <div class="its">${x.items.map(i => `<span class="it ${i.held ? 'have' : ''}" title="${esc(i.source)}${i.where && i.where.length ? ' · you have it: ' + esc(i.where.join(', ')) : ''}">${esc(i.name)}${i.held > 1 ? ` <small>×${i.held}</small>` : ''}</span>`).join('')}</div>
           </div>`).join('')}
           <div class="cls-f"><span>Say “${esc(c.quests[0].trigger)}” etc. to ${esc(c.npc)}${c.wiki ? ` · <a href="${esc(c.wiki)}" target="_blank" rel="noopener">EQLWiki ↗</a>` : ''}</span>
             <label><input type="checkbox" data-unlock="${esc(c.name)}" ${c.manual_unlock ? 'checked' : ''}> unlocked via token</label></div>
         </div></div>`;
     }).join('');
+    $('#classes').innerHTML = html || `<div class="empty">${qf === 'ready' ? 'No quest has all its items yet.' : qf === 'again' ? 'No finished quest has all its items again.' : 'Nothing to show.'}</div>`;
     $$('.cls-h').forEach(h => h.onclick = () => {
       const n = h.parentElement.dataset.cls;
       collapsed.has(n) ? collapsed.delete(n) : collapsed.add(n);
@@ -215,6 +219,16 @@ async function refreshSky() {
     $('#rune-info').textContent = d.currency_time
       ? `Wind Runes: from your Currency tab ${dt(d.currency_time)}, plus runes picked up since.`
       : 'Wind Runes are counted as you pick them up. Copy your Currency tab once for exact counts.';
+    $('#side-title').innerHTML = skySrc === 'spare' ? 'No longer needed <span class="muted">(spare items you hold)</span>'
+      : 'Still needed <span class="muted">(remaining quests)</span>';
+    if (skySrc === 'spare') {
+      $('#shopping').innerHTML = d.spare.length ? d.spare.map(s => `
+        <div class="need spare" title="Used for: ${esc(s.for.join(', '))}${s.where.length ? ' · you have it: ' + esc(s.where.join(', ')) : ''}">
+          <span>${esc(s.name)}</span>
+          <span class="c">${s.need ? `${s.spare} spare <small class="muted">(have ${s.held}, need ${s.need})</small>` : `×${s.held}`}</span>
+          <span class="src">${s.need ? 'more than your quests need' : 'every quest using it is done'}</span></div>`).join('')
+        : '<div class="muted">No spare Sky items.</div>';
+    } else {
     const shop = d.shopping.filter(s => skySrc === 'all' || (skySrc === 'rune') === s.name.startsWith('Wind Rune'));
     $('#shopping').innerHTML = shop.length ? shop.map(s => `
       <div class="need ${s.held >= s.need ? 'ok' : ''}" title="For: ${esc(s.for.join(', '))}">
@@ -222,6 +236,7 @@ async function refreshSky() {
         <span class="c"><button class="adj" data-item="${esc(s.name)}" data-d="-1">−</button> ${s.held}/${s.need}
           <button class="adj" data-item="${esc(s.name)}" data-d="1">+</button></span>
         <span class="src">${esc(s.source)}</span></div>`).join('') : '<div class="muted">Nothing left — nice.</div>';
+    }
     $$('.adj').forEach(b => b.onclick = async () => { await post('/api/sky/adjust', {char, item:b.dataset.item, delta:+b.dataset.d}); refreshSky(); });
 
     $('#drops').innerHTML = d.drops.length ? d.drops.slice(0, 100).map(l => `

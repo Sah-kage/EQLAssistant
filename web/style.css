@@ -416,3 +416,8 @@ table.grp td, table.grp th { padding:3px 10px 3px 0; font-size:13px; }
 .cls3 { display:flex; gap:8px; flex-wrap:wrap; margin:4px 0; }
 .cls3 select { min-width:0; flex:1 1 120px; }
 #modal-body .modal-btns #sub-msg { margin-right:auto; align-self:center; }
+
+/* sky filters */
+.q .t .tag.again { color:var(--sky); }
+.need.spare .c { color:var(--sky); }
+.filters select { margin-left:4px; }

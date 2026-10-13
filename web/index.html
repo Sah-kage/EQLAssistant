@@ -191,17 +191,21 @@
       <div class="filters">
         <button class="ghost" data-inv-import title="Load a Name_server-Inventory.txt made with /outputfile inventory">Import inventory…</button>
         <label><input type="checkbox" id="hide-done"> Hide completed classes</label>
-        <label><input type="checkbox" id="only-ready"> Only quests ready to hand in</label>
+        <label>Show <select id="q-filter">
+          <option value="all">All quests</option>
+          <option value="ready">Ready to turn in (all items, not turned in yet)</option>
+          <option value="again">Ready again (all items, turned in before)</option>
+        </select></label>
       </div>
     </div>
     <div class="split sky">
       <div id="classes" class="classes"></div>
       <div class="side">
         <div class="panel">
-          <div class="panel-h">Still needed <span class="muted">(remaining quests)</span></div>
+          <div class="panel-h"><span id="side-title">Still needed <span class="muted">(remaining quests)</span></span></div>
           <p class="hint" style="margin:0 0 6px"><span id="rune-info"></span>
             <button class="ghost" id="rune-set" style="margin-top:6px" title="Wind Runes live in your Currency tab, not your bags">Set Wind Runes from Currency tab…</button></p>
-          <div class="seg"><button data-src="all" class="on">All</button><button data-src="boss">Boss drops</button><button data-src="rune">Wind runes</button></div>
+          <div class="seg"><button data-src="all" class="on">All</button><button data-src="boss">Boss drops</button><button data-src="rune">Wind runes</button><button data-src="spare" title="Items you hold that no unfinished quest needs">No longer needed</button></div>
           <div id="shopping"></div>
         </div>
         <div class="panel">

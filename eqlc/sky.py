@@ -267,10 +267,12 @@ class SkyTracker:
         for k in keys:
             since, n = self._since(c, k)
             held[k] = [since, n]
+        # in time order: loot adds, a turn-in uses one of each item it needs (only what you had then)
+        events = []
         for l in c["loot"]:
             k = _k(l["item"])
             if k in held and l["t"] > held[k][0]:
-                held[k][1] += l["qty"]
+                events.append((l["t"], 1, k, l["qty"]))
         for qid, d in c["done"].items():
             if qid not in QUESTS:                 # a test EQLWiki no longer lists
                 continue
@@ -281,7 +283,9 @@ class SkyTracker:
             for it in QUESTS[qid]["items"]:
                 k = _k(it["name"])
                 if k in held and d["t"] > held[k][0]:
-                    held[k][1] -= 1
+                    events.append((d["t"], 0, k, -1))
+        for _, kind, k, q in sorted(events, key=lambda e: (e[0], e[1])):
+            held[k][1] = held[k][1] + q if kind else max(0, held[k][1] - 1)
         return {k: max(0, v[1]) for k, v in held.items() if v[1]}
 
     def view(self, char):
@@ -290,6 +294,7 @@ class SkyTracker:
         where = (c.get("inventory") or {}).get("where") or {}
         out_classes = []
         need = {}
+        uses = {}                                   # item key -> {"name", "source", "for": [quests]}
         tot_done = tot = 0
         for cls in CLASSES:
             qs = []
@@ -301,16 +306,19 @@ class SkyTracker:
                     h = held.get(_k(it["name"]), 0)
                     items.append({"name": it["name"], "source": it["source"], "held": h,
                                   "where": where.get(_k(it["name"]), [])})
+                    u = uses.setdefault(_k(it["name"]), {"name": it["name"], "source": it["source"], "for": []})
+                    u["for"].append(f"{cls['abbr']} {q['name']}")
                     if not done:
                         e = need.setdefault(_k(it["name"]), {"name": it["name"], "source": it["source"],
                                                              "need": 0, "held": h, "for": []})
                         e["need"] += 1
                         e["for"].append(f"{cls['abbr']} {q['name']}")
-                ready = not done and all(i["held"] > 0 for i in items)
+                have_all = all(i["held"] > 0 for i in items)
+                ready = not done and have_all
                 ndone += bool(done)
                 qs.append({"id": q["id"], "name": q["name"], "trigger": q["trigger"], "reward": q["reward"],
                            "done": bool(done), "how": done["how"] if done else None,
-                           "ready": ready, "items": items})
+                           "ready": ready, "again": bool(done) and have_all, "items": items})
             tot += len(qs)
             tot_done += ndone
             unlocked = cls["name"] in c["unlocked"] or ndone == len(qs)
@@ -319,12 +327,21 @@ class SkyTracker:
                                 "done": ndone, "total": len(qs), "unlocked": unlocked,
                                 "manual_unlock": cls["name"] in c["unlocked"], "quests": qs})
         shopping = sorted(need.values(), key=lambda e: (e["held"] >= e["need"], e["source"], e["name"]))
+        # items you hold that no quest still needs (every quest using them is done), or more than are still needed
+        spare = []
+        for k, u in uses.items():
+            h = held.get(k, 0)
+            n = need[k]["need"] if k in need else 0
+            if h > n:
+                spare.append({"name": u["name"], "source": u["source"], "held": h, "need": n, "spare": h - n,
+                              "for": u["for"], "where": where.get(k, [])})
+        spare.sort(key=lambda e: (e["need"] > 0, e["source"], e["name"]))
         drops = sorted(c["loot"], key=lambda l: -l["t"])[:300]
         group = [g for g in self.group_drops if g.get("seen_by") == char][-200:][::-1]
         inv = c.get("inventory")
         cur = c.get("currency")
         runes = [{"name": RUNE_NAMES[k], "held": held.get(k, 0)} for k in RUNE_NAMES]
-        return {"char": char, "classes": out_classes, "shopping": shopping, "drops": drops,
+        return {"char": char, "classes": out_classes, "shopping": shopping, "spare": spare, "drops": drops,
                 "runes": runes, "currency_time": cur["t"] if cur else None,
                 "group_drops": group, "done": tot_done, "total": tot,
                 "inventory_time": inv["t"] if inv else None,

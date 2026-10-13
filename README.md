@@ -273,6 +273,11 @@ Names aren't case-sensitive, and `*` is a wildcard: `a spiroc *` times every spi
   1. Any log line showing you got the test's reward, e.g. `You receive Amulet of the Fae from Nomaad.`, `Nomaad gives you Amulet of the Fae.`, `You have been given …` or `--You have looted …--`. Chat lines and other people's loot are ignored. Older logs are checked once too, so tests you finished before using the app tick themselves.
   2. A reward item showing up in an inventory export.
   3. Ticking the box yourself.
+- **Filters** (Show, at the top of the Sky tab):
+  - *Ready to turn in*: you hold every item for a test you haven't turned in yet.
+  - *Ready again*: you've turned the test in before and hold every item for it again (for a second reward, or for an alt).
+  - *No longer needed* (side panel): Sky items you hold that no unfinished test needs, or more of them than your unfinished tests need.
+- A turn-in seen in the log uses up one of each of its items you had at that moment; items you loot afterwards stay counted.
   Ticks you make yourself are treated as "done before tracking started", so they don't use up items you're holding.
 - **Wind Runes** go to the **Currency** tab in game, not your bags, so inventory exports don't include them. The app counts runes as you pick them up: loot lines, plus lines like `You receive 2 Wind Rune Azia.` or `Wind Rune Azia has been added to your currency.`, with each pickup counted once. For exact counts, click **Set Wind Runes from Currency tab…** on the Plane of Sky tab and copy the numbers from your Currency tab once. Later pickups are added on top, and importing an inventory never resets them.
 - **Exact counts**: type `/outputfile inventory` in game now and then (see [Inventory export](#inventory-export)). The export is used as the true count of what you hold, and later loot is added on top. Rewards you own, including upgraded or Exaltation versions, mark their test done.
