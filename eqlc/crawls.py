@@ -41,17 +41,33 @@ _GROUP_LINE = re.compile(r"^(?P<who>[A-Z][a-z]{2,14}) (?:tells the group|tells t
 _PET_LINE = re.compile(r"^(?P<who>[A-Z][a-z]{2,14}) (?:tells you|says),? '.*\bmaster\b", re.I)
 
 
+# Charm spells (EQLWiki): Charm / Beguile / Allure ... say "Someone has been charmed.";
+# Dominate Undead and the like say "Someone moans.", Charm Animals "Someone blinks."
+_CHARMED = re.compile(r"^(?P<who>[A-Z][a-z]{2,14}) has been charmed\.?$")
+_CHARM_LAND = re.compile(r"^(?P<who>[A-Z][a-z]{2,14}) (?:moans|blinks)\.$")
+_CHARM_WORDS = ("charm", "beguile", "dominate", "cajol", "thrall", "befriend", "allure", "dictate", "agacerie",
+                "call of karana", "tunare's request", "whispers")
+
+
 def looks_like_mob(name):
     n = (name or "").strip()
     return n.lower().startswith(("a ", "an ", "the ")) or " " in n or "`" in n
 
 
-def party(r):
+def players_of(r, npcs=()):
+    """The other players in a run. Names that turned out to be NPCs (a charmed mob, a pet) are left out,
+    unless something only a player does (group chat, looting, /who) showed them to be a player."""
+    sure = set(r.get("confirmed") or ())
+    bad = set(r.get("npcs") or ()) | set(npcs)
+    return sorted(n for n in (r.get("players") or {}) if n in sure or n not in bad)
+
+
+def party(r, npcs=()):
     """'solo' or 'group' for a run: the instance name says so, or other players took part."""
     mode = (r.get("mode") or "").lower()
     if mode in ("solo", "group"):
         return mode
-    return "group" if r.get("players") else "solo"
+    return "group" if players_of(r, npcs) else "solo"
 
 
 def same_zone(a, b):
@@ -74,9 +90,11 @@ class Crawls:
         self.proof_dir = proof_dir                     # where each run's raw lines are kept (live runs only)
         self.is_pet = lambda char, name: False         # set by the app: pets don't make a run "multiplayer"
         self.pets = {}                                 # char -> pet names heard calling you "Master"
+        self._charming = {}                            # char -> when you last started casting a charm spell
         self.saved_classes = lambda char: None         # set by the app: your three classes from Settings / who
         self._meta = None
         s = state.setdefault("crawls", {})
+        self.npcs = s.setdefault("npcs", {})           # char -> {name: time}: one-word names seen acting as NPCs
         self.runs = s.setdefault("runs", [])
         self.active = s.setdefault("active", {})     # char -> run id
         self.where = {}                                # char -> last zone event (not saved)
@@ -204,17 +222,90 @@ class Crawls:
             r["proof"]["file_events"].append({"kind": kind, "t": time.time() if now is None else now})
             self.dirty = True
 
-    def _note_player(self, char, r, name):
-        """Another player took part in this run (so it's multiplayer)."""
+    def _note_player(self, char, r, name, sure=False):
+        """Another player took part in this run (so it's multiplayer).
+
+        sure: something only a player does (group chat, joining the group, looting, /who).
+        Otherwise (hitting, killing, casting) it may be a charmed mob or a pet with a one-word name."""
         if (not name or name in ("You", "YOU") or not _PLAYER.match(name) or self.is_pet(char, name)
                 or name in self.pets.get(char, ())):
             return
         if name.lower() in (char or "").lower().split("_")[:1]:
             return
+        if not sure:
+            me, _, server = (char or "").partition("_")
+            sure = self.classes.who(server or "-", name) is not None
         pl = r.setdefault("players", {})
         if name not in pl:
             self.dirty = True
         pl[name] = pl.get(name, 0) + 1
+        if sure and name not in r.setdefault("confirmed", []):
+            r["confirmed"].append(name)
+            self.dirty = True
+        if name in self.npcs.get(char, {}) and name not in r.setdefault("npcs", []):
+            r["npcs"].append(name)                       # seen acting as an NPC before (e.g. you fought it)
+
+    def _is_npc(self, char, name, t=None):
+        """Evidence that a one-word name is an NPC: a charmed mob, a pet, a named mob."""
+        if not name or not _PLAYER.match(name):
+            return
+        known = self.npcs.setdefault(char, {})
+        if name not in known:
+            if len(known) >= 500:
+                del known[min(known, key=known.get)]
+            self.dirty = True
+        known[name] = t or time.time()
+        r = self.current(char)
+        if r and name in (r.get("players") or {}) and name not in r.setdefault("npcs", []):
+            r["npcs"].append(name)
+            self.dirty = True
+
+    def _confirmed(self, r):
+        return set(r.get("confirmed") or ())
+
+    def _npc_signals(self, char, t, ev):
+        """Charmed mobs hit and kill mobs like players do. Tell them apart by what else they do:
+        you hit them, they hit you, they hit or get hit by a known player, you killed them."""
+        typ = ev["type"] if ev else None
+        if typ not in ("dmg", "avoid", "death"):
+            return
+        src, tgt = ev.get("src"), ev.get("tgt")
+        r = self.current(char)
+        sure = self._confirmed(r) if r else set()
+        if typ == "death":
+            if src == "You" and tgt not in sure:
+                self._is_npc(char, tgt, t)               # "You have slain Gorgalosk!"
+            return
+        if src == "You" and tgt not in ("You", "YOU") and tgt not in sure:
+            self._is_npc(char, tgt, t)                   # you hit it
+        elif tgt in ("You", "YOU") and src not in sure:
+            self._is_npc(char, src, t)                   # it hit you (a charm breaking)
+        elif src in sure and tgt not in sure:
+            self._is_npc(char, tgt, t)                   # a group member hit it
+        elif tgt in sure and src not in sure:
+            self._is_npc(char, src, t)                   # it hit a group member
+
+    def set_player(self, char, name, is_player):
+        """'Not a player' / 'Is a player' buttons: fixes every run of this character."""
+        if is_player:
+            self.npcs.get(char, {}).pop(name, None)
+        else:
+            self._is_npc(char, name)
+        for r in self.runs:
+            if r["char"] != char or name not in (r.get("players") or {}):
+                continue
+            conf, bad = r.setdefault("confirmed", []), r.setdefault("npcs", [])
+            if is_player:
+                if name in bad:
+                    bad.remove(name)
+                if name not in conf:
+                    conf.append(name)
+            else:
+                if name in conf:
+                    conf.remove(name)
+                if name not in bad:
+                    bad.append(name)
+        self.dirty = True
 
     def _party_signals(self, char, t, ev, line):
         if line and "aster" in line:
@@ -222,10 +313,23 @@ class Crawls:
             if m:
                 pet = m.group("who").capitalize()
                 self.pets.setdefault(char, set()).add(pet)
+                self._is_npc(char, pet, t)                 # your pet (or a mob you charmed)
                 for r in (self.current(char),):
                     if r and pet in (r.get("players") or {}):
                         del r["players"][pet]          # it was your pet all along
                         self.dirty = True
+                return
+        self._npc_signals(char, t, ev)
+        if ev and ev.get("type") == "spell" and ev.get("sub") == "cast" and \
+                any(w in (ev.get("spell") or "").lower() for w in _CHARM_WORDS):
+            self._charming[char] = t
+        if line and (" charmed" in line or line.endswith(("moans.", "blinks."))):
+            msg = line.split("] ", 1)[-1]
+            m = _CHARMED.match(msg)
+            if not m and t - self._charming.get(char, -1e9) <= 15:
+                m = _CHARM_LAND.match(msg)                       # your undead / animal charm landing
+            if m:
+                self._is_npc(char, m.group("who"), t)
                 return
         r = self.current(char)
         if not r or r["status"] != "active":
@@ -237,11 +341,11 @@ class Crawls:
         elif typ == "death" and ev.get("src") and looks_like_mob(ev.get("tgt")):
             self._note_player(char, r, ev["src"])                   # "a ghoul has been slain by Bobbin!"
         elif typ == "loot" and ev.get("who") not in (None, "You"):
-            self._note_player(char, r, ev["who"])                   # "--Bobbin has looted ...--"
+            self._note_player(char, r, ev["who"], sure=True)        # "--Bobbin has looted ...--"
         elif line:
             m = _GROUP_LINE.match(line.split("] ", 1)[-1])
             if m:
-                self._note_player(char, r, m.group("who").capitalize())
+                self._note_player(char, r, m.group("who").capitalize(), sure=True)
 
     def _process(self, char, t, ev, line=None):
         self._party_signals(char, t, ev, line)
@@ -501,7 +605,7 @@ class Crawls:
     # -- views ------------------------------------------------------------------------
     def group(self, r):
         """You and the other players in a run, with their classes as far as the log shows."""
-        return self.classes.group(r["char"], (r.get("players") or {}).keys(), self.saved_classes(r["char"]))
+        return self.classes.group(r["char"], self.players(r), self.saved_classes(r["char"]))
 
     def _snap(self, r):
         if not self.proof_dir:
@@ -509,10 +613,18 @@ class Crawls:
         from . import snapshot as S
         return S.exists(self.proof_dir, r["id"])
 
-    @staticmethod
-    def _bucket(r):
+    def _npcs(self, r):
+        return self.npcs.get(r["char"], {})
+
+    def party(self, r):
+        return party(r, self._npcs(r))
+
+    def players(self, r):
+        return players_of(r, self._npcs(r))
+
+    def _bucket(self, r):
         """Personal bests are kept per zone, difficulty and solo / multiplayer."""
-        return (r["zone"], r["level"], party(r))
+        return (r["zone"], r["level"], self.party(r))
 
     def _summary(self, r, now, fights=()):
         end = r["end"] if r["status"] != "active" else now
@@ -537,7 +649,8 @@ class Crawls:
             "to_first_kill": round(r["first_kill"] - r.get("offered", r["start"])) if r["first_kill"] else None,
             "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]),
             "proof": I.verdict(r),
-            "party": party(r), "players": sorted(r.get("players") or {}), "stopped": bool(r.get("stopped")),
+            "party": self.party(r), "players": self.players(r),
+            "left_out": sorted(set(r.get("players") or {}) - set(self.players(r))), "stopped": bool(r.get("stopped")),
             "combat": round(combat) if combat is not None else None,
             "kills": r["kills"], "deaths": r["deaths"],
             "motes": motes, "motes_tiers": r["motes"], "motes_per_hour": round(motes / hours, 1) if hours > 0.01 else None,
@@ -553,7 +666,7 @@ class Crawls:
             if r["status"] != "done" or not r["start_known"] or (char and r["char"] != char):
                 continue
             d = r["end"] - r["start"]
-            b = out.setdefault(self._bucket(r), {"zone": r["zone"], "level": r["level"], "party": party(r),
+            b = out.setdefault(self._bucket(r), {"zone": r["zone"], "level": r["level"], "party": self.party(r),
                                                  "tier_label": tier_label(r["level"], r["tier"]),
                                                  "runs": 0, "best": None, "best_id": None, "total": 0.0,
                                                  "last": None, "last_at": 0})
@@ -631,6 +744,6 @@ class Crawls:
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
-                        "party": party(r), "players": sorted(r.get("players") or {})}
+                        "party": self.party(r), "players": self.players(r)}
             break
         return None

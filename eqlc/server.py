@@ -323,6 +323,11 @@ def make_handler(app):
                             return self._json({"ok": False, "error": "Enter a crawl instance first"}, 400)
                     elif p == "/api/crawls/discard":
                         app.crawls.discard_current(char)
+                    elif p == "/api/crawls/player":
+                        name = str(body.get("name") or "")
+                        if not name:
+                            return self._json({"ok": False, "error": "No name"}, 400)
+                        app.crawls.set_player(char, name, bool(body.get("player")))
                     elif p == "/api/crawls/delete":
                         app.crawls.delete(body.get("id"))
                     else:

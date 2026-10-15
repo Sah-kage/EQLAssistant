@@ -539,7 +539,7 @@ const partyChip = r => r.party === 'group'
   : '<span class="party solo">Solo</span>';
 let CLASSES = [];
 const SRC_LABEL = {who: 'from /who', settings: 'your Settings', spells: 'guessed from spells & skills'};
-function groupHtml(r) {
+function groupHtml(r, edit) {
   const g = r.group || [];
   if (!g.length) return '';
   return `<table class="grp"><tr><th>Player</th><th>Classes</th><th>How we know</th></tr>${g.map(m => {
@@ -550,8 +550,10 @@ function groupHtml(r) {
     }).join(' ') : '<span class="muted">unknown</span>';
     const missing = m.classes.length && m.classes.length < 3 ? ` <span class="muted">+${3 - m.classes.length} not seen</span>` : '';
     return `<tr><td>${esc(m.name)}${m.you ? ' <span class="muted">(you)</span>' : ''}</td><td>${cls}${missing}</td>
-      <td class="muted">${m.source ? SRC_LABEL[m.source] : (m.you ? 'pick them in Settings, or type /who' : 'nothing seen yet — /who them')}</td></tr>`;
-  }).join('')}</table>`;
+      <td class="muted">${m.source ? SRC_LABEL[m.source] : (m.you ? 'pick them in Settings, or type /who' : 'nothing seen yet — /who them')}</td>
+      <td>${m.you || !edit ? '' : `<button class="ghost tiny" data-player="${esc(m.name)}" data-is="0" title="A charmed mob or a pet, not a group member">Not a player</button>`}</td></tr>`;
+  }).join('')}</table>${edit && (r.left_out || []).length ? `<p class="hint">Left out as charmed mobs or pets: ${r.left_out.map(n =>
+    `${esc(n)} <button class="ghost tiny" data-player="${esc(n)}" data-is="1">Is a player</button>`).join(' ')}</p>` : ''}`;
 }
 function lbStatus(r) {
   if (r.submitted) return `<span class="lb ok" title="${esc(r.submitted.message || '')}">✓ Sent to the leaderboard ${dt(r.submitted.at)}${r.submitted.auto ? ' (automatically)' : ''}${r.submitted.duplicate ? ' — the site already had it' : ''}</span>`;
@@ -674,7 +676,7 @@ async function refreshCrawls() {
         <div><span>Experience:</span> ${r.xp ? r.xp.toFixed(2) + '%' : '—'}${r.reward_xp ? ' (incl. crawl reward)' : ''}</div>
         ${r.status === 'done' ? `<div class="wide lbbox">${r.snapshot ? `<img class="snap" src="/api/crawls/snapshot?id=${r.id}" alt="Crawl timer">` : ''}
           <div><span>Leaderboard:</span> ${lbStatus(r)}</div></div>` : ''}
-        ${r.group && r.group.length ? `<div class="wide"><span>Classes:</span>${groupHtml(r)}</div>` : ''}
+        ${r.group && r.group.length ? `<div class="wide"><span>Group:</span>${groupHtml(r, true)}</div>` : ''}
         <div class="wide"><span>Reward chest:</span> ${r.chest.length ? r.chest.map(c => `${esc(c.item)}${c.qty > 1 ? ' ×' + c.qty : ''}`).join(', ') : '—'}</div>
         ${r.notes.length ? `<div class="wide"><span>Messages:</span> ${r.notes.map(esc).join(' · ')}</div>` : ''}
         <div class="wide"><button class="ghost del" data-delrun="${r.id}">Delete this run</button></div></div></td></tr>`;
@@ -693,6 +695,11 @@ async function refreshCrawls() {
     const f = $('#proof-folder'); if (f) f.onclick = () => window.pywebview.api.open_folder(r.folder);
   });
   $$('[data-submit]').forEach(b => b.onclick = e => { e.stopPropagation(); submitDialog(+b.dataset.submit); });
+  $$('[data-player]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    await post('/api/crawls/player', {char, name: b.dataset.player, player: b.dataset.is === '1'});
+    refreshCrawls();
+  });
   $$('[data-delrun]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
     if (confirm('Delete this run from your history?')) { await post('/api/crawls/delete', {char, id: +b.dataset.delrun}); openRun = null; refreshCrawls(); }

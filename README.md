@@ -131,6 +131,7 @@ The **Dungeon Crawls** tab times every crawl from the log.
   - An instance that's offered but never entered within 30 minutes is dropped.
 - **Solo or multiplayer:** each run is marked **Solo** or **Multiplayer**.
   - A run is multiplayer when other players take part: they hit or kill mobs, loot, join your group, or talk in group or raid chat during the run. The instance name decides it if it says Solo or Group.
+  - Charmed mobs and pets with one-word names fight like players, so they're left out when the log shows they're NPCs: "Gorgalosk has been charmed.", your undead or animal charm landing ("… moans." / "… blinks."), a pet calling you Master, a mob you hit or killed, or one that hits you or a group member (a charm breaking). Someone who loots, chats in group or shows up in `/who` always counts as a player. In a run's details, **Not a player** / **Is a player** fixes a name for all your runs.
   - Your own pet doesn't count. It's recognised when it calls you "Master", or add its name under pet names in Settings.
   - Personal bests are kept separately for solo and multiplayer runs.
 - **Stop timer** ends the current run now and keeps its time, e.g. if the Reward Chest line never showed. **Reset timer** puts it back to 0:00, and it starts again on your next kill. Both are on the Crawls tab and on the crawl overlay's right-click menu. **Start timing here** starts a run in the instance you're in if the "is now available" line was missed.

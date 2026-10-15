@@ -94,6 +94,56 @@ class ClassTests(unittest.TestCase):
         self.assertEqual(g["Bobbin"]["classes"], [])
 
 
+class CharmTests(unittest.TestCase):
+    def run_of(self, lines, setup=()):
+        from eqlc.crawls import Crawls
+        c = Crawls({})
+        feed(c, "Me_rivervale", list(setup), t0=T0 - 1000)
+        feed(c, "Me_rivervale", [(0, "Unrest is now available to you."), (10, "You have entered Unrest 2 (Adaptive)."),
+                                 (20, "You have slain a ghoul!")] + list(lines) +
+             [(300, "--You have looted a Gem from Reward Chest.--")])
+        return c, c._summary(c.runs[-1], T0 + 400)
+
+    def test_charmed_mob_is_not_a_player(self):
+        c, s = self.run_of([(30, "You begin casting Beguile."), (33, "Gorgalosk has been charmed."),
+                            (40, "Gorgalosk hits a ghoul for 80 points of damage."),
+                            (50, "a ghoul has been slain by Gorgalosk!")])
+        self.assertEqual((s["party"], s["players"], s["left_out"]), ("solo", [], ["Gorgalosk"]))
+
+    def test_undead_charm_landing(self):
+        c, s = self.run_of([(30, "You begin casting Dominate Undead."), (33, "Rotfang moans."),
+                            (40, "Rotfang bites a ghoul for 80 points of damage.")])
+        self.assertEqual(s["players"], [])
+
+    def test_your_pet_and_charm_break(self):
+        c, s = self.run_of([(30, "Snarl hits a ghoul for 40 points of damage."),
+                            (31, "Snarl tells you, 'Attacking a ghoul Master.'"),
+                            (40, "Krakor slashes a ghoul for 50 points of damage."),
+                            (90, "Krakor hits YOU for 120 points of damage.")])       # charm broke
+        self.assertEqual((s["party"], s["players"]), ("solo", []))
+
+    def test_mob_you_fought_before(self):
+        c, s = self.run_of([(40, "Gorgalosk slashes a ghoul for 50 points of damage.")],
+                           setup=[(0, "You slash Gorgalosk for 30 points of damage.")])
+        self.assertEqual(s["players"], [])
+
+    def test_real_players_stay(self):
+        c, s = self.run_of([(12, "Bobbin has joined the group."), (40, "Bobbin hits a ghoul for 50 points of damage."),
+                            (41, "Zed slashes a ghoul for 60 points of damage."),
+                            (42, "--Zed has looted a Bone Chip.--"),
+                            (50, "a ghoul hits Bobbin for 30 points of damage."),
+                            (60, "Tom hits a ghoul for 10 points of damage.")])
+        self.assertEqual((s["party"], s["players"]), ("group", ["Bobbin", "Tom", "Zed"]))
+
+    def test_buttons(self):
+        c, s = self.run_of([(40, "Tom hits a ghoul for 10 points of damage.")])
+        r = c.runs[-1]
+        c.set_player("Me_rivervale", "Tom", False)
+        self.assertEqual(c._summary(r, T0 + 400)["players"], [])
+        c.set_player("Me_rivervale", "Tom", True)
+        self.assertEqual(c._summary(r, T0 + 400)["players"], ["Tom"])
+
+
 class Site(BaseHTTPRequestHandler):
     got = []
     reply = {"ok": True, "id": 42, "message": "Thanks! Your run is waiting for review."}

@@ -421,3 +421,4 @@ table.grp td, table.grp th { padding:3px 10px 3px 0; font-size:13px; }
 .q .t .tag.again { color:var(--sky); }
 .need.spare .c { color:var(--sky); }
 .filters select { margin-left:4px; }
+button.tiny { font-size:11px; padding:1px 7px; }
