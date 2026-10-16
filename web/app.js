@@ -608,7 +608,9 @@ function crawlNow(d) {
         <div><label>In combat</label><b>${c.combat != null ? hms(c.combat) : '—'}</b></div>
         <div><label>Downtime</label><b>${c.combat != null ? hms(Math.max(0, c.inside - c.combat)) : '—'}</b></div>
         <div><label>Outside</label><b>${hms(c.outside)}</b></div></div>
-      <p class="hint">${c.waiting_kill ? `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it` : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. It ends when the first item is looted from the Reward Chest.</p>`;
+      <p class="hint">${c.waiting_kill ? (c.armed === 'zone'
+        ? `You entered <code>${esc(c.raw || c.zone)}</code> at ${clock(c.offered)} (no “is now available” line — normal when someone else in your group opened the crawl). The timer starts on your first kill in it`
+        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. It ends when the first item is looted from the Reward Chest.</p>`;
   }
   if (j) return `<div class="panel-h"><span>Crawl complete${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
       <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${partyChip(j)}</div>

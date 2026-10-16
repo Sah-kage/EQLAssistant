@@ -2,11 +2,12 @@
 
 How a run is timed:
   "<ZONE NAME> is now available to you."  - the run is set up for that zone (timer not running yet)
+  "You have entered <Zone> <id> (<Tier>)."  - group members don't get the "available" line (only whoever
+                                           opens the crawl does), so entering a crawl instance sets it up too.
+                                           Leaving again before anything is killed drops it.
   start  = the first kill inside that zone's instance
   end    = the first line containing "from Reward Chest" (looting the reward chest)
 Fallbacks, for runs where those lines are missing:
-  - entering an instanced zone with no "available" line starts a run whose start
-    time isn't trusted (shown, but never used for personal bests);
   - "You have completed the Dungeon Crawl..." with no chest loot afterwards ends
     the run at that line once you leave or start the next crawl.
 Porting out (Gate, Succor, etc. drop you out of the instance) and coming back
@@ -392,11 +393,11 @@ class Crawls:
     def _start(self, char, t, ev):
         """'<ZONE NAME> is now available to you.' - a new crawl starts now."""
         r = self.current(char)
-        if (r and r["status"] == "active" and not r["start_known"] and r["left_at"] is None
-                and same_zone(r["zone"], ev["zone"])):
+        if (r and r["status"] == "active" and (not r["start_known"] or (r.get("armed") == "zone" and r.get("waiting_kill")))
+                and r["left_at"] is None and same_zone(r["zone"], ev["zone"])):
             # you zoned in before the "available" line: same run, timed from the first kill after it
             r.update(start=t, offered=t, start_known=True, kills=0, deaths=0, first_kill=None, xp=0.0, motes={},
-                     waiting_kill=True, entered=True)
+                     waiting_kill=True, entered=True, armed="available")
             self.dirty = True
             return
         if r:
@@ -405,6 +406,7 @@ class Crawls:
             self._close(char, r, "left", t)
         prev = next((x for x in reversed(self.runs) if x["char"] == char), None)
         r = self._new(char, dict(ev, from_available=True), t)
+        r["armed"] = "available"
         here = self.where.get(char)
         just_done_here = prev is not None and here is not None and prev["raw"] == here.get("raw") and prev["status"] != "active"
         if here and same_zone(here.get("zone"), ev["zone"]) and not just_done_here:
@@ -464,15 +466,36 @@ class Crawls:
             self.dirty = True
             return
         if z["inst"]:
-            if r:
+            if r and not self._drop_unused(char, r):
                 if r["left_at"] is None:
                     r["left_at"] = t
                 self._close(char, r, "left", t)
-            self._new(char, z, t, start_known=False)    # no "is now available" line seen
+            # No "is now available" line: only whoever opens the crawl gets it, so group members
+            # don't. Entering the instance arms the timer instead; it still starts on the first kill.
+            nr = self._new(char, z, t)
+            nr["armed"] = "zone"
         elif r and r["status"] == "active" and r["left_at"] is None:
+            if self._drop_unused(char, r):
+                return                                    # left before anything was killed: not a run
             r["left_at"] = t                              # ported/zoned out; may come back
             r["exits"] += 1
             self.dirty = True
+
+    def _drop_unused(self, char, r):
+        """A run armed by entering an instance, with nothing killed yet, is dropped when you leave
+        (a normal instance, or going back into one that's already finished)."""
+        if r.get("armed") == "zone" and r.get("waiting_kill") and r["status"] == "active":
+            self.runs.remove(r)
+            if self.active.get(char) == r["id"]:
+                del self.active[char]
+            if self.proof_dir:
+                try:
+                    os.remove(I.proof_path(self.proof_dir, r["id"]))
+                except OSError:
+                    pass
+            self.dirty = True
+            return True
+        return False
 
     def _crawl(self, char, t, ev):
         sub = ev["sub"]
@@ -647,7 +670,7 @@ class Crawls:
             "duration": round(dur), "inside": round(max(0.0, dur - outside)), "outside": round(outside),
             "exits": r["exits"], "entered": r.get("entered", True), "away_now": r["status"] == "active" and r["left_at"] is not None,
             "to_first_kill": round(r["first_kill"] - r.get("offered", r["start"])) if r["first_kill"] else None,
-            "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]),
+            "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]), "armed": r.get("armed"),
             "proof": I.verdict(r),
             "party": self.party(r), "players": self.players(r),
             "left_out": sorted(set(r.get("players") or {}) - set(self.players(r))), "stopped": bool(r.get("stopped")),

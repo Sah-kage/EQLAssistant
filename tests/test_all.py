@@ -637,16 +637,15 @@ class EndToEnd(unittest.TestCase):
             (410, "You have entered Crushbone 4 (Refined)."),
             (420, "You have slain an orc pawn!"),
             (640, "--You have looted a Bone Chip from Reward Chest.--"),
-            (700, "You have entered Crushbone 5 (Refined)."),         # farming: no "available" line
-            (900, "You have entered Greater Faydark."),
-            (900 + 31 * 60, "Befallen is now available to you."),     # >30 min later: Crushbone 5 abandoned
+            (700, "You have entered Crushbone 5 (Refined)."),         # no "available" line, nothing killed
+            (900, "You have entered Greater Faydark."),               # left before a kill: not a run
+            (900 + 31 * 60, "Befallen is now available to you."),
             (900 + 31 * 60 + 5, "You have entered Befallen 1 (Fused)."),
             (900 + 31 * 60 + 50, "This Dungeon Crawl was too easy to earn an instance recharge."),
         ])
         v = c.view("A", now=1_000_000 + 4000)
         st = [(r["zone"], r["status"], r["duration"], r["start_known"]) for r in v["runs"]]
-        self.assertEqual(st[1:], [("Crushbone", "left", 200, False), ("Crushbone", "done", 220, True),
-                                  ("Crushbone", "done", 290, True)])
+        self.assertEqual(st[1:], [("Crushbone", "done", 220, True), ("Crushbone", "done", 290, True)])
         self.assertEqual(v["current"]["zone"], "Befallen")
         self.assertEqual(v["current"]["level"], 3)
         self.assertEqual(v["bests"][0]["zone"], "Crushbone")
@@ -784,6 +783,33 @@ class EndToEnd(unittest.TestCase):
         ])
         runs = c.view("A", now=1_000_000 + 200)["runs"]
         self.assertEqual([(r["duration"], r["start_known"], r["level"]) for r in runs], [(90, True, 4)])
+
+    def test_crawl_group_member_no_available_line(self):
+        """Only whoever opens the crawl sees "... is now available"; group members just zone in."""
+        from eqlc.crawls import Crawls
+        from eqlc import integrity as I
+        c = Crawls({})
+        T0 = 1_000_000
+        L = [(0, "You have entered Unrest 2 (Adaptive)."),
+             (40, "You have slain a ghoul!"),                                   # timer starts here
+             (90, "You have entered The Commonlands."),                          # ported out
+             (120, "You have entered Unrest 2 (Adaptive)."),                     # back in: same run
+             (340, "--You have looted a Gem from Reward Chest.--"),
+             (400, "You have entered The Commonlands."),
+             (500, "You have entered Unrest 2 (Adaptive)."),                     # back into the finished one
+             (520, "You have entered The Commonlands.")]
+        for dt_, msg in L:
+            c.process("A", T0 + dt_, parse_msg(msg), msg, {"now": T0 + dt_ + 1, "mono": 5000 + dt_})
+        v = c.view("A", now=T0 + 600)
+        self.assertEqual([(r["status"], r["duration"], r["start_known"], r["armed"], r["exits"]) for r in v["runs"]],
+                         [("done", 300, True, "zone", 1)])
+        self.assertEqual(I.verdict(c.runs[-1])["status"], "verified")
+        self.assertEqual(v["bests"][0]["best"], 300)
+        # while waiting in the instance the overlay says ready
+        c2 = Crawls({})
+        c2.process("A", T0, parse_msg("You have entered Unrest 2 (Adaptive)."), "You have entered Unrest 2 (Adaptive).")
+        o = c2.overlay("A", now=T0 + 5)
+        self.assertEqual((o["state"], o["elapsed"]), ("ready", 0))
 
     def test_crawl_kills_counted_in_real_world_orders(self):
         def kills(lines):

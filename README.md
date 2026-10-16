@@ -126,7 +126,8 @@ The **Dungeon Crawls** tab times every crawl from the log.
 - **Start:** "`<ZONE NAME>` is now available to you." sets up the run for that zone. The timer then starts on the **first kill** inside that zone's instance (yours or your group's); travel, buffing and anything before that first kill isn't counted. When you zone in, the run picks up the instance's number and difficulty, e.g. `Lower Guk 7 (Fused)`. Difficulty shows as D0–D4 (D1 Awakened, D2 Adaptive, D3 Fused, D4 Refined).
 - **End:** the run ends on the first line containing "from Reward Chest", which is the first item looted from the chest by you or anyone in your group.
 - **Fallbacks:**
-  - If you enter an instance without an "is now available" line, it's still timed from the first kill, but marked "start unknown" and never counted as a personal best. The same goes for a chest looted without any kill.
+  - In a group, only whoever opens the crawl gets the "is now available" line. Everyone else's run is set up when they enter the crawl instance, and is timed from the first kill the same way, counts for personal bests and can be sent to the leaderboard. Leaving the instance before anything is killed drops it (a normal instance, or going back into a finished one).
+  - A chest looted without any kill is marked "start unknown" and never counted as a personal best.
   - If the crawl completes ("You have completed the Dungeon Crawl…") but nobody loots the chest, the run ends at the completion line once you leave.
   - An instance that's offered but never entered within 30 minutes is dropped.
 - **Solo or multiplayer:** each run is marked **Solo** or **Multiplayer**.
