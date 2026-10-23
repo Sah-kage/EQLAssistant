@@ -718,6 +718,73 @@ $('#rescan-crawls').onclick = async () => {
   }, 800);
 };
 
+// ---------- death recap ----------
+let deathSel = null;
+const deathSeen = () => +(localStorageGet('eqlc-death-seen-' + (char || 'active')) || 0);
+const KIND_LABEL = {melee: 'melee', spell: 'spell', dot: 'DoT'};
+function deathEvent(e) {
+  const when = `<td class="muted">${e.ago ? '−' + e.ago + 's' : '0s'}</td>`;
+  if (e.k === 'hit') return `<tr class="dh">${when}<td>${esc(e.src)}</td><td>${e.spell ? esc(e.spell) : esc(e.verb || 'hits')}${e.kind === 'dot' ? ' <span class="muted">(DoT)</span>' : ''}</td>
+    <td class="num red">${e.amt.toLocaleString()}${e.crit ? ' <span class="gold">crit</span>' : ''}</td></tr>`;
+  if (e.k === 'heal') return `<tr class="dheal">${when}<td>${esc(e.src)}</td><td>${e.spell ? esc(e.spell) : 'heal'}</td><td class="num green">+${e.amt.toLocaleString()}</td></tr>`;
+  if (e.k === 'avoid') return `<tr class="dmiss">${when}<td>${esc(e.src)}</td><td>${esc(e.verb || 'attack')}</td><td class="num muted">${esc(e.outcome)}</td></tr>`;
+  if (e.k === 'resist') return `<tr class="dmiss">${when}<td></td><td>${esc(e.spell)}</td><td class="num muted">resisted</td></tr>`;
+  if (e.k === 'cast') return `<tr class="dmiss">${when}<td>${esc(e.src)}</td><td>begins casting ${esc(e.spell)}</td><td></td></tr>`;
+  if (e.k === 'status') return `<tr class="dstat">${when}<td></td><td>You are ${esc(e.what)}</td><td></td></tr>`;
+  return '';
+}
+function deathDetail(d) {
+  if (!d) return '<div class="empty">Pick a death on the left.</div>';
+  const b = d.blow;
+  const top = Math.max(1, ...d.sources.map(s => s.total));
+  return `<div class="panel-h"><span>Killed by <b class="red">${esc(d.killer || 'unknown')}</b>${d.zone ? ' <span class="muted">in ' + esc(d.zone) + '</span>' : ''}</span>
+      <span class="muted">${dt(d.t)} <button class="ghost tiny" data-death-del="${d.id}">Delete</button></span></div>
+    ${b ? `<p class="blow">Killing blow: <b>${esc(b.src)}</b> ${b.spell ? esc(b.spell) : esc(b.verb || 'hit')} for <b class="red">${b.amt.toLocaleString()}</b>${b.crit ? ' (critical)' : ''}${b.ago ? ` <span class="muted">${b.ago}s before death</span>` : ''}</p>` : '<p class="muted">No damage to you was logged before this death.</p>'}
+    <div class="crawl-stats">
+      <div><label>Damage taken</label><b class="red">${d.total.toLocaleString()}</b></div>
+      <div><label>Last 10 s</label><b>${d.last10.toLocaleString()}</b></div>
+      <div><label>Last 5 s</label><b>${d.last5.toLocaleString()}</b></div>
+      <div><label>Hits</label><b>${d.hits}</b></div>
+      <div><label>Healed</label><b class="green">${d.healed.toLocaleString()}</b></div>
+      <div><label>Avoided / resisted</label><b>${d.avoided} / ${d.resisted}</b></div></div>
+    <p class="hint">Over ${d.window}s before death${d.killer_from === 'last hit' ? ' · the log didn\'t name the killer, so it\'s whoever hit you last' : ''}.</p>
+    ${d.sources.length ? `<h3>Damage by source</h3><table class="dsrc"><tr><th>Source</th><th></th><th class="num">Damage</th><th class="num">%</th><th class="num">Hits</th><th class="num">Biggest</th><th>Melee / spell / DoT</th><th class="num">Missed you</th></tr>
+      ${d.sources.map(s => `<tr><td>${esc(s.name)}</td><td class="barcell"><span class="bar" style="width:${100 * s.total / top}%"></span></td>
+        <td class="num">${s.total.toLocaleString()}</td><td class="num">${s.pct}%</td><td class="num">${s.hits}${s.crits ? ` <span class="gold">(${s.crits} crit)</span>` : ''}</td>
+        <td class="num">${s.max.toLocaleString()}</td><td class="muted" title="${esc(Object.entries(s.spells).map(([k, v]) => k + ': ' + v).join(', '))}">${s.melee.toLocaleString()} / ${s.spell.toLocaleString()} / ${s.dot.toLocaleString()}</td>
+        <td class="num">${s.avoided}</td></tr>`).join('')}</table>` : ''}
+    <h3>Timeline</h3>
+    <div class="dtl"><table><tr><th>Before death</th><th>Who</th><th>What</th><th class="num">Amount</th></tr>
+      ${d.events.slice().reverse().map(deathEvent).join('')}</table></div>`;
+}
+async function refreshDeaths(badgeOnly) {
+  const d = await get('/api/deaths?' + q() + (!badgeOnly && deathSel ? '&id=' + deathSel : ''));
+  if (!d || !d.char) { if (!badgeOnly) $('#death-list').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
+  const unseen = d.deaths.filter(x => x.id > deathSeen()).length;
+  if (tab === 'deaths' && d.latest) { localStorageSet('eqlc-death-seen-' + (char || 'active'), String(d.latest)); }
+  $('#death-badge').hidden = !unseen || tab === 'deaths';
+  $('#death-badge').textContent = unseen;
+  if (badgeOnly) return;
+  if (!deathSel || !d.deaths.some(x => x.id === deathSel)) {
+    deathSel = d.latest;
+    if (deathSel) return refreshDeaths();
+  }
+  $('#death-sum').textContent = d.deaths.length ? `${d.deaths.length} recorded` : '';
+  $('#death-list').innerHTML = d.deaths.length ? `<table><tr><th>When</th><th>Killed by</th><th class="num">Damage</th><th class="num">Last 10 s</th></tr>
+    ${d.deaths.map(x => `<tr class="click ${x.id === deathSel ? 'sel' : ''}" data-death="${x.id}"><td>${dt(x.t)}<div class="muted small">${esc(x.zone || '')}</div></td>
+      <td>${esc(x.killer || 'unknown')}</td><td class="num">${x.total.toLocaleString()}</td><td class="num">${x.last10.toLocaleString()}</td></tr>`).join('')}</table>`
+    : '<div class="muted" style="padding:6px 0">No deaths recorded — nice. They show up here as they happen (and from the recent part of your log).</div>';
+  $('#death-killers').innerHTML = d.killers.length > 1 ? `<h3>Most deaths to</h3>${d.killers.map(k => `<div class="need"><span>${esc(k.name)}</span><span class="c">${k.n}×</span></div>`).join('')}` : '';
+  $('#death-detail').innerHTML = deathDetail(d.detail);
+  $$('[data-death]').forEach(tr => tr.onclick = () => { deathSel = +tr.dataset.death; refreshDeaths(); });
+  $$('[data-death-del]').forEach(b => b.onclick = async () => {
+    if (confirm('Delete this death recap?')) { await post('/api/deaths/delete', {char, id: +b.dataset.deathDel}); deathSel = null; refreshDeaths(); }
+  });
+}
+$('#death-clear').onclick = async () => {
+  if (confirm('Forget every death recap for this character?')) { await post('/api/deaths/clear', {char}); deathSel = null; refreshDeaths(); }
+};
+
 // ---------- modal ----------
 function openModal(html) { $('#modal-body').innerHTML = html; $('#modal').hidden = $('#modal-bg').hidden = false; }
 function closeModal() { $('#modal').hidden = $('#modal-bg').hidden = true; $('#modal-body').innerHTML = ''; }
@@ -1228,6 +1295,8 @@ async function refresh() {
     if (tab === 'timers') await refreshTimers();
     if (tab === 'overlays') await refreshOverlays();
     if (tab === 'crawls') await refreshCrawls();
+    if (tab === 'deaths' && (n % 2 === 0 || !$('#death-list').innerHTML)) await refreshDeaths();
+    else if (n % 4 === 0) await refreshDeaths(true);
     if (tab === 'raids' && (n % 2 === 0 || !$('#raid-groups').innerHTML)) await refreshRaids();
     if (tab === 'quests' && (n % 5 === 0 || !$('#q-list').innerHTML)) await refreshQuests();
     if (tab === 'factions' && (n % 3 === 0 || !$('#f-table').innerHTML)) await refreshFactions();

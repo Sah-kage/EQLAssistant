@@ -184,6 +184,18 @@ Each submission carries:
 
 **How group members' classes are found.** `/who` is exact: type `/who` in the zone with your group before you start (EQL shows `[60 Paladin/Cleric/Wizard] Name`). Without it the app guesses from what they do in your log: spells they cast, heal or hit with ("Bobbin hit a ghoul for 300 points of cold damage by Ice Comet"), songs, and skills like backstab, frenzy, bash and kick. Spells are matched against EQLWiki's spell lists for each class, and it picks the fewest classes (up to three) that explain everything seen, preferring spells only one class has. Guesses show with a dashed outline and a "?" where two classes fit equally. Pure melee classes and classes that didn't do anything visible can't be guessed.
 
+## Death recap
+
+The **Deaths** tab keeps a recap of every death (the last 100 per character). A badge on the tab shows new deaths since you last looked.
+
+- **Killed by:** the name on the death line ("You have been slain by Gorgalosk!"). For "You died." on its own, it's whoever hit you last.
+- **Killing blow:** the last hit before you died, how hard it was and whether it was a critical.
+- **Totals:** damage taken in the minute before the death (since your previous death at most), the last 10 and last 5 seconds, hits, heals you got, and attacks you avoided or spells you resisted.
+- **Damage by source:** each attacker's damage, share, hits, biggest hit, melee / spell / damage-over-time split and misses.
+- **Timeline:** everything that happened to you, newest first, with how many seconds before the death it was. This covers hits, misses, dodges, spells and DoT ticks, mobs starting to cast, heals, resists and stuns.
+
+The log has no hit point numbers, so the recap shows damage and heals, not your health bar. Deaths come from live play and the recent part of your log (Settings → Backfill on start).
+
 ## Raids
 
 The **Raids** tab lists raid bosses and ticks each one when your log shows it die. Counts run from the last weekly reset, Tuesday 8am Pacific (4pm UK time for most of the year), and the tab counts down to the next.

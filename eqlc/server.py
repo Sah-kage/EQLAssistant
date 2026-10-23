@@ -106,6 +106,16 @@ def make_handler(app):
                     return self._json(app.quests.view(char) if char else {"char": None})
                 if p == "/api/factions":
                     return self._json(app.factions.view(char) if char else {"char": None})
+                if p == "/api/deaths":
+                    if not char:
+                        return self._json({"char": None})
+                    v = app.deaths.view(char)
+                    if q.get("id"):
+                        try:
+                            v["detail"] = app.deaths.get(char, int(q["id"]))
+                        except ValueError:
+                            v["detail"] = None
+                    return self._json(v)
                 if p == "/api/races":
                     return self._json(app.races.view(char))
                 if p == "/api/raids":
@@ -332,6 +342,15 @@ def make_handler(app):
                         app.crawls.delete(body.get("id"))
                     else:
                         return self.send_error(404)
+                app.save_state(force=True)
+                return self._json({"ok": True})
+            if p in ("/api/deaths/delete", "/api/deaths/clear"):
+                with app.lock:
+                    char = body.get("char") or app.char()
+                    if p.endswith("delete"):
+                        app.deaths.delete(char, int(body.get("id") or 0))
+                    else:
+                        app.deaths.clear(char)
                 app.save_state(force=True)
                 return self._json({"ok": True})
             if p.startswith("/api/timers/"):

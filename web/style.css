@@ -422,3 +422,20 @@ table.grp td, table.grp th { padding:3px 10px 3px 0; font-size:13px; }
 .need.spare .c { color:var(--sky); }
 .filters select { margin-left:4px; }
 button.tiny { font-size:11px; padding:1px 7px; }
+
+/* death recap */
+.split.deaths { grid-template-columns:minmax(320px, 2fr) minmax(0, 3fr); }
+#death-list tr.sel td { background:#e5675e14; }
+#death-list .small { font-size:11px; }
+.blow { margin:4px 0 10px; }
+table.dsrc td.barcell { width:22%; }
+table.dsrc .bar { display:block; height:6px; border-radius:3px; background:#e5675e99; }
+.dtl { max-height:460px; overflow:auto; }
+.dtl tr.dheal td { color:var(--green); }
+.dtl tr.dmiss td { color:var(--dim); }
+.dtl tr.dstat td { color:var(--gold); }
+td.num, th.num { text-align:right; }
+@media (max-width:900px) { .split.deaths { grid-template-columns:1fr; } }
+.dtl td:nth-child(2), .dtl td:nth-child(3), .dtl th:nth-child(2), .dtl th:nth-child(3),
+#death-list td:nth-child(2), #death-list th:nth-child(2), table.dsrc td:nth-child(7), table.dsrc th:nth-child(7) { text-align:left; }
+@media (max-width:1400px) { nav button { padding:8px 9px; } header { gap:16px; } }

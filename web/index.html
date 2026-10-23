@@ -13,6 +13,7 @@
   <nav>
     <button data-tab="parser" class="on">DPS</button>
     <button data-tab="crawls">Crawls</button>
+    <button data-tab="deaths">Deaths <span id="death-badge" class="nbadge" hidden></span></button>
     <button data-tab="raids">Raids <span id="raid-badge" class="nbadge dim" hidden></span></button>
     <button data-tab="timers">Timers <span id="timer-badge" class="nbadge" hidden></span></button>
     <button data-tab="quests">Class Quests</button>
@@ -127,6 +128,20 @@
   </section>
 
   <!-- FACTIONS -->
+  <section id="tab-deaths" class="tab">
+    <div class="split deaths">
+      <div class="panel">
+        <div class="panel-h"><span>Deaths <span class="muted" id="death-sum"></span></span>
+          <button class="ghost tiny" id="death-clear" title="Forget every death recap for this character">Clear</button></div>
+        <div id="death-list"></div>
+        <div id="death-killers"></div>
+      </div>
+      <div class="panel" id="death-detail"></div>
+    </div>
+    <p class="hint">A recap covers the last minute before each death: every hit, miss, spell and damage-over-time tick on you, heals you got,
+      spells you resisted and stuns. The log has no hit point numbers, so it shows damage and heals rather than your health bar.</p>
+  </section>
+
   <section id="tab-races" class="tab">
     <div class="panel race-head">
       <div class="panel-h"><span>Race unlocks <span class="muted" id="race-sum"></span></span>

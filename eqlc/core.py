@@ -15,6 +15,7 @@ from .factions import Factions
 from .quests import Quests
 from .raids import Raids
 from .races import Races
+from .deaths import DeathRecap
 from .parser import parse_line
 from .sky import SkyTracker, REWARD_RE as _sky_reward_re, reward_in_line
 
@@ -143,6 +144,7 @@ class App:
         self.raids = Raids(self.state, self.cfg)
         self.quests = Quests(self.state, self.sky)
         self.races = Races(self.state, self.factions)
+        self.deaths = DeathRecap(self.state)
         self.zone_info = {}
         self.state.setdefault("crawl_scanned", {})
         self.state.setdefault("history_scan", {})
@@ -445,6 +447,8 @@ class App:
                         if not r:
                             continue
                         t, ev = r
+                        if dps_ok:
+                            self.deaths.process(char, t, ev, line, self.zone.get(char))
                         if sky_ok:
                             self.motes.process_line(char, t, line)
                             self.sky.process_line(char, t, line)
@@ -689,7 +693,7 @@ class App:
     def save_state(self, force=False):
         self.timers.prune()
         dirty = (self.sky.dirty or self.motes.dirty or self.timers.dirty or self.crawls.dirty or
-                 self.factions.dirty or self.raids.dirty or self.quests.dirty or self.races.dirty)
+                 self.factions.dirty or self.raids.dirty or self.quests.dirty or self.races.dirty or self.deaths.dirty)
         if force or (dirty and time.time() - self._last_save > 5):
             with self.lock:
                 _save(self.state_path, self.state)
@@ -698,6 +702,7 @@ class App:
                 self.timers.dirty = False
                 self.crawls.dirty = False
                 self.factions.dirty = self.raids.dirty = self.quests.dirty = self.races.dirty = False
+                self.deaths.dirty = False
             self._last_save = time.time()
 
     def run(self):
