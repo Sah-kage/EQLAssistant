@@ -31,7 +31,7 @@ $$('nav button').forEach(b => b.onclick = () => {
   $$('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + tab));
   refresh();
 });
-$('#charsel').onchange = e => { char = e.target.value; selFight = null; followLive = true; refresh(); };
+$('#charsel').onchange = e => { char = e.target.value; selFight = null; followLive = true; settingsLoaded = false; deathSel = null; refresh(); };
 $$('[data-open]').forEach(b => b.onclick = async () => {
   const label = b.textContent;
   const r = await post('/api/overlay/open', {kind: b.dataset.open});
@@ -538,7 +538,7 @@ const partyChip = r => r.party === 'group'
   ? `<span class="party group" title="${esc((r.players || []).join(', ') || 'Group instance')}">Multiplayer${r.players && r.players.length ? ' · ' + (r.players.length + 1) : ''}</span>`
   : '<span class="party solo">Solo</span>';
 let CLASSES = [];
-const SRC_LABEL = {who: 'from /who', settings: 'your Settings', spells: 'guessed from spells & skills'};
+const SRC_LABEL = {who: 'from /who', settings: 'your Settings', spells: 'guessed from spells & skills', run: 'set by you for this run'};
 function groupHtml(r, edit) {
   const g = r.group || [];
   if (!g.length) return '';
@@ -551,7 +551,8 @@ function groupHtml(r, edit) {
     const missing = m.classes.length && m.classes.length < 3 ? ` <span class="muted">+${3 - m.classes.length} not seen</span>` : '';
     return `<tr><td>${esc(m.name)}${m.you ? ' <span class="muted">(you)</span>' : ''}</td><td>${cls}${missing}</td>
       <td class="muted">${m.source ? SRC_LABEL[m.source] : (m.you ? 'pick them in Settings, or type /who' : 'nothing seen yet — /who them')}</td>
-      <td>${m.you || !edit ? '' : `<button class="ghost tiny" data-player="${esc(m.name)}" data-is="0" title="A charmed mob or a pet, not a group member">Not a player</button>`}</td></tr>`;
+      <td>${!edit ? '' : `<button class="ghost tiny" data-editcls="${esc(m.name)}" data-run="${r.id}" data-cur="${esc(m.classes.join('/'))}" data-fixed="${m.source === 'run' ? 1 : 0}" title="Set the classes for this run">Edit</button>`}
+        ${m.you || !edit ? '' : `<button class="ghost tiny" data-player="${esc(m.name)}" data-is="0" title="A charmed mob or a pet, not a group member">Not a player</button>`}</td></tr>`;
   }).join('')}</table>${edit && (r.left_out || []).length ? `<p class="hint">Left out as charmed mobs or pets: ${r.left_out.map(n =>
     `${esc(n)} <button class="ghost tiny" data-player="${esc(n)}" data-is="1">Is a player</button>`).join(' ')}</p>` : ''}`;
 }
@@ -697,6 +698,23 @@ async function refreshCrawls() {
     const f = $('#proof-folder'); if (f) f.onclick = () => window.pywebview.api.open_folder(r.folder);
   });
   $$('[data-submit]').forEach(b => b.onclick = e => { e.stopPropagation(); submitDialog(+b.dataset.submit); });
+  $$('[data-editcls]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    if (!CLASSES.length) { const s = await get('/api/settings'); CLASSES = (s && s.classes) || []; }
+    const cur = b.dataset.cur ? b.dataset.cur.split('/') : [], name = b.dataset.editcls, id = +b.dataset.run;
+    openModal(`<h2>Classes for ${esc(name)} in this run</h2>
+      <p class="muted">Use this when the log got them wrong, e.g. a loadout change. It only changes this run.</p>
+      <div class="cls3">${[0, 1, 2].map(k => clsSelect('ec-' + k, cur[k])).join('')}</div>
+      <div class="modal-btns"><span id="ec-msg" class="muted"></span>${b.dataset.fixed === '1' ? '<button class="ghost" id="ec-clear">Use what the log shows</button>' : ''}
+        <button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" id="ec-save">Save</button></div>`);
+    const send = async classes => {
+      const res = await post('/api/crawls/classes', {char, id, name, classes});
+      if (!res || !res.ok) { $('#ec-msg').textContent = (res && res.error) || 'Could not save'; return; }
+      closeModal(); refreshCrawls();
+    };
+    $('#ec-save').onclick = () => send([0, 1, 2].map(k => $('#ec-' + k).value).filter(Boolean));
+    const c = $('#ec-clear'); if (c) c.onclick = () => send([]);
+  });
   $$('[data-player]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
     await post('/api/crawls/player', {char, name: b.dataset.player, player: b.dataset.is === '1'});
@@ -1246,9 +1264,7 @@ async function refreshSettings(force) {
     else el.value = Array.isArray(v) ? v.join(', ') : v;
   }
   CLASSES = d.classes || [];
-  const mc = d.my_classes || [];
-  $('#my-classes-who').textContent = d.char ? charLabel(d.char) : 'your character';
-  $('#my-classes').innerHTML = [0, 1, 2].map(i => clsSelect('my-c' + i, mc[i])).join('');
+  renderMyClasses(d);
   $('#data-dir').innerHTML = `EQL Assistant ${esc(d.version || '')} · Saved data: <code>${esc(d.data_dir)}</code>`;
 }
 $('#save').onclick = async () => {
@@ -1263,12 +1279,28 @@ $('#save').onclick = async () => {
   settingsLoaded = false; refreshSettings(true);
 };
 
-$('#save-classes').onclick = async () => {
-  const classes = [0, 1, 2].map(i => $('#my-c' + i).value).filter(Boolean);
-  const r = await post('/api/classes/mine', {char, classes});
-  $('#classes-saved').textContent = r && r.ok ? 'Saved ✓' : ((r && r.error) || 'Could not save');
-  setTimeout(() => $('#classes-saved').textContent = '', 2500);
-};
+function renderMyClasses(d) {
+  const info = d.class_info || {};
+  const chars = Object.keys(info);
+  if (!chars.length) { $('#my-classes').innerHTML = '<p class="muted">No characters yet.</p>'; return; }
+  const unread = [...new Set(chars.flatMap(c => info[c].unread || []))];
+  $('#my-classes').innerHTML = `<table class="mycls">${chars.map((c, n) => {
+    const i = info[c], cl = i.classes || [];
+    const w = i.who;
+    return `<tr><td><b>${esc(charLabel(c))}</b>${c === d.active ? ' <span class="muted">(active)</span>' : ''}
+        <div class="muted small">${w ? `last /who ${dt(w.t)}: <code>${esc(w.raw || (w.level ? `[${w.level} ${w.classes.join('/')}]` : w.classes.join('/')))}</code>` : 'no /who seen yet'}</div>
+        ${i.warning ? `<div class="red small">${esc(i.warning)}</div>` : ''}
+        ${i.source === 'who' ? '<div class="small green">From your /who</div>' : ''}</td>
+      <td><div class="cls3">${[0, 1, 2].map(k => clsSelect(`mc-${n}-${k}`, cl[k])).join('')}</div></td>
+      <td><button class="ghost" data-savecls="${esc(c)}" data-n="${n}">Save</button> <span class="muted small" id="mc-msg-${n}"></span></td></tr>`;
+  }).join('')}</table>${unread.length ? `<p class="hint red">The app saw these /who lines but couldn't find classes in them — please send one to the developer:<br>${unread.map(u => `<code>${esc(u)}</code>`).join('<br>')}</p>` : ''}`;
+  $$('[data-savecls]').forEach(b => b.onclick = async () => {
+    const n = b.dataset.n, classes = [0, 1, 2].map(k => $(`#mc-${n}-${k}`).value).filter(Boolean);
+    const r = await post('/api/classes/mine', {char: b.dataset.savecls, classes});
+    $('#mc-msg-' + n).textContent = r && r.ok ? 'Saved ✓' : ((r && r.error) || 'Could not save');
+    if (r && r.ok) setTimeout(() => { settingsLoaded = false; refreshSettings(true); }, 1200);
+  });
+}
 
 // ---------- native app window extras ----------
 function onNative() {

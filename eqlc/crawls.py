@@ -628,7 +628,20 @@ class Crawls:
     # -- views ------------------------------------------------------------------------
     def group(self, r):
         """You and the other players in a run, with their classes as far as the log shows."""
-        return self.classes.group(r["char"], self.players(r), self.saved_classes(r["char"]))
+        return self.classes.group(r["char"], self.players(r), self.saved_classes(r["char"]), at=r.get("start"),
+                                  fixed=r.get("class_fix"))
+
+    def set_classes(self, rid, name, classes):
+        """Classes set by hand for one person in one run (e.g. a loadout the log can't show)."""
+        r = self._get(rid)
+        if not r:
+            raise ValueError("No such run")
+        fix = r.setdefault("class_fix", {})
+        if classes:
+            fix[name] = list(classes)
+        else:
+            fix.pop(name, None)
+        self.dirty = True
 
     def _snap(self, r):
         if not self.proof_dir:

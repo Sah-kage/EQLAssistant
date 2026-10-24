@@ -273,10 +273,11 @@
       <p class="hint">Each run is sent with the dungeon, difficulty, time, solo or group, a picture of the crawl timer window,
         your classes and your group members' classes (from <code>/who</code>, or guessed from the spells and skills they use), and
         the run's log lines so the site can check the time. Your character and server come from your log file name.</p>
-      <div class="f"><span>Your three classes for <b id="my-classes-who"></b></span>
-        <div class="cls3" id="my-classes"></div></div>
-      <div class="btns"><button class="ghost" id="save-classes" type="button">Save classes</button><span class="muted" id="classes-saved"></span></div>
-      <p class="hint">Needed to send runs to the leaderboard. Typing <code>/who</code> on yourself in game fills these in too.</p>
+      <div class="f"><span>Your classes, per character</span></div>
+      <div id="my-classes"></div>
+      <p class="hint">Needed to send runs to the leaderboard. Each character (and server) has its own. If you change loadout,
+        pick them again, or type <code>/who</code> on yourself in game: a newer <code>/who</code> that lists all three classes wins.
+        To fix one run (or a group member's classes), open the run on the Crawls tab and use <b>Edit</b>.</p>
       <button id="save" class="primary">Save</button> <span id="saved" class="muted"></span>
       <p class="hint" id="data-dir"></p>
       <hr>

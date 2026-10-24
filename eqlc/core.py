@@ -44,6 +44,7 @@ DEFAULTS = {
     "leaderboard_url": "",        # EQL Crawl Times site that finished crawls are sent to
     "leaderboard_auto": True,     # send verified crawls there automatically when they finish
     "leaderboard_classes": {},    # character id -> your three classes (sent with each run)
+    "leaderboard_classes_at": {}, # character id -> when they were picked (a newer /who wins: loadouts change)
 }
 
 LOG_RE = re.compile(r"^eqlog_(?P<char>[^_]+)_(?P<server>.+)\.txt$", re.I)
@@ -237,24 +238,42 @@ class App:
                 "text": I.dumps(doc)}
 
     # -- leaderboard -----------------------------------------------------------------
-    def my_classes(self, char):
-        """Your three classes for a character: picked in Settings, else seen in /who."""
+    def class_info(self, char):
+        """Your classes for a character and where they came from.
+
+        Picked in Settings, unless a /who typed after that shows a different set (you changed loadout).
+        {"classes": [3] or None, "source": "settings" | "who" | None, "who": last /who, "warning": str | None}"""
         saved = (self.cfg.get("leaderboard_classes") or {}).get(char)
-        if saved and len(saved) == 3:
-            return list(saved)
+        saved = list(saved) if saved and len(saved) == 3 else None
+        at = (self.cfg.get("leaderboard_classes_at") or {}).get(char, 0)
         name, server = split_char(char)
         w = self.crawls.classes.who(server or "-", name)
-        if w and len(w["classes"]) == 3:
-            return list(w["classes"])
-        return None
+        info = {"classes": saved, "source": "settings" if saved else None, "warning": None,
+                "who": {k: w.get(k) for k in ("classes", "level", "t", "raw")} if w else None,
+                "unread": self.crawls.classes.unread(server or "-")}
+        if w and w["classes"]:
+            newer = w["t"] > at
+            if len(w["classes"]) >= 3 and (not saved or (newer and w["classes"][:3] != saved)):
+                info.update(classes=list(w["classes"][:3]), source="who")
+            elif saved and newer and not set(w["classes"]) <= set(saved):
+                info["warning"] = (f"Your last /who shows {'/'.join(w['classes'])}, which isn't in the classes picked "
+                                   f"here. If you changed loadout, pick your classes again.")
+        return info
+
+    def my_classes(self, char):
+        """Your three classes for a character: picked in Settings, or a newer /who that lists all three."""
+        return self.class_info(char)["classes"]
 
     def set_my_classes(self, char, classes):
         from .classes_data import CLASSES
         classes = [c for c in classes if c in CLASSES]
         if len(classes) != 3 or len(set(classes)) != 3:
             raise ValueError("Pick three different classes")
+        if not char:
+            raise ValueError("No character")
         with self.lock:
             self.cfg.setdefault("leaderboard_classes", {})[char] = classes
+            self.cfg.setdefault("leaderboard_classes_at", {})[char] = time.time()
             self.save_cfg()
 
     def submittable(self, r):
@@ -277,7 +296,8 @@ class App:
         why = self.submittable(r)
         if why:
             raise ValueError(why)
-        classes = list(classes or self.my_classes(r["char"]) or [])
+        name0 = split_char(r["char"])[0]
+        classes = list(classes or (r.get("class_fix") or {}).get(name0) or self.my_classes(r["char"]) or [])
         if len(classes) != 3:
             raise ValueError("Pick your three classes first (Settings, or Submit to leaderboard…).")
         name, server = split_char(r["char"])
@@ -338,7 +358,8 @@ class App:
             if (r["status"] != "done" or r.get("submitted") or r.get("auto_tried") or r["id"] in self._submitting
                     or not r.get("end") or now - r["end"] > 30 * 60):
                 continue
-            if I.verdict(r)["status"] != "verified" or not self.my_classes(r["char"]):
+            mine = (r.get("class_fix") or {}).get(split_char(r["char"])[0])
+            if I.verdict(r)["status"] != "verified" or not (mine and len(mine) == 3 or self.my_classes(r["char"])):
                 continue
             if now - r["end"] < self.SNAP_WAIT and not S.exists(self.ddir, r["id"]):
                 continue

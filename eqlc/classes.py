@@ -23,7 +23,10 @@ MAX_NAMES = 500
 MAX_SIGS = 80
 
 _NAME = r"[A-Z][a-z]{2,14}"
-WHO_RE = re.compile(r"\[(?P<lvl>\d+) (?P<cls>[A-Za-z' /,]+?)\] (?P<name>" + _NAME + r")\b")
+# a /who line: "[60 Wizard] Bobbin (Gnome) <Guild>", "[60 Paladin/Cleric/Wizard] Bobbin", "[60 Pal Clr Wiz] Bobbin",
+# " AFK [55 Arch Mage] Bobbin", "[Wizard 60] Bobbin" ...  (anything in the brackets that names classes)
+WHO_RE = re.compile(r"\[(?P<cls>[^\]]{2,60})\]\s+(?:\*?GM\*?\s+)?(?P<name>[A-Za-z][a-z]{2,14})\b(?!:)")
+WHO_HIST = 6        # /who results kept per name (classes change with loadouts)
 CAST_RE = re.compile(r"^(?P<src>" + _NAME + r") begins (?:casting|to cast) (?P<spell>.+?)\.$")
 SING_RE = re.compile(r"^(?P<src>" + _NAME + r") begins (?:singing|to sing)\b(?: (?P<spell>.+?))?\.$")
 MY_CAST_RE = re.compile(r"^You begin (?:casting|singing) (?P<spell>.+?)\.$")
@@ -39,13 +42,23 @@ WARDER_RE = re.compile(r"^(?P<src>" + _NAME + r")`s warder\b")
 
 
 def classes_from_who(text):
-    """'Paladin/Cleric/Wizard' or 'Pal/Clr/Wiz' or 'Wizard' -> ['Paladin', 'Cleric', 'Wizard']."""
-    out = []
-    for part in re.split(r"[/,]", text or ""):
-        c = D.ALIASES.get(part.strip().lower())
+    """'Paladin/Cleric/Wizard', 'Pal/Clr/Wiz', 'Paladin Cleric Wizard', '60 Shadow Knight' -> class names."""
+    words = [w for w in re.split(r"[\s/,|+&()\-]+", re.sub(r"\d+", " ", (text or "").lower())) if w]
+    out, i = [], 0
+    while i < len(words):
+        two = " ".join(words[i:i + 2]) if i + 1 < len(words) else None
+        if two and two in D.ALIASES:
+            c, i = D.ALIASES[two], i + 2
+        else:
+            c, i = D.ALIASES.get(words[i]), i + 1
         if c and c not in out:
             out.append(c)
     return out
+
+
+def who_level(text):
+    m = re.search(r"\d+", text or "")
+    return int(m.group()) if m else None
 
 
 def sig_classes(sig):
@@ -119,14 +132,19 @@ class ClassSpotter:
             return None
         msg = line.split("] ", 1)[-1] if line.startswith("[") else line
         me, server = self._split(char)
-        if msg.lstrip().startswith(("[", "AFK", "LFG", "<LINKDEAD>")):
-            m = WHO_RE.search(msg)
+        head = msg.lstrip()
+        if head.startswith(("[", "AFK", "LFG", "<LINKDEAD>", "*")):
+            m = WHO_RE.search(head[:80])
             if m:
                 cls = classes_from_who(m.group("cls"))
                 if cls:
-                    self._srv(server)["who"][m.group("name")] = {"classes": cls, "level": int(m.group("lvl")),
-                                                                 "t": t}
-                    self.dirty = True
+                    self._who(server, m.group("name"), cls, who_level(m.group("cls")), t, head)
+                elif "anonymous" not in m.group("cls").lower() and "roleplay" not in m.group("cls").lower():
+                    unread = self._srv(server).setdefault("unread", [])
+                    if head not in unread:
+                        unread.append(head[:160])
+                        del unread[:-8]
+                        self.dirty = True
             return None
         if "`s warder" in msg:
             m = WARDER_RE.match(msg)
@@ -176,13 +194,41 @@ class ClassSpotter:
             self._see(server, name, sig)
         return None if src == "You" else src
 
-    # -- answers -------------------------------------------------------------------
-    def who(self, server, name):
-        return self._srv(server)["who"].get(name)
+    def _who(self, server, name, classes, level, t, raw=""):
+        name = name.capitalize()
+        who = self._srv(server)["who"]
+        w = who.get(name) or {"hist": []}
+        hist = w.setdefault("hist", [])
+        if not hist or hist[-1][1] != classes or hist[-1][2] != level:
+            hist.append([t, classes, level])
+            del hist[:-WHO_HIST]
+        else:
+            hist[-1][0] = t
+        w.update(classes=classes, level=level, t=t, raw=raw[:160])
+        who[name] = w
+        self.dirty = True
 
-    def classes_of(self, server, name, saved=None):
-        """{"name", "classes": [...], "source": "who" | "settings" | "spells" | None, "sure": bool, "evidence"}."""
-        w = self.who(server, name)
+    # -- answers -------------------------------------------------------------------
+    def who(self, server, name, at=None):
+        """Latest /who for a name, or (with `at`) the one nearest that time: classes change with loadouts."""
+        w = self._srv(server)["who"].get((name or "").capitalize())
+        if not w or at is None or not w.get("hist"):
+            return w
+        hist = [h for h in w["hist"] if h[0] <= at + 2 * 3600] or w["hist"][:1]
+        t, classes, level = min(hist, key=lambda h: abs(h[0] - at))
+        return dict(w, classes=classes, level=level, t=t)
+
+    def unread(self, server):
+        return list(self._srv(server).get("unread", []))
+
+    def classes_of(self, server, name, saved=None, at=None, fixed=None):
+        """{"name", "classes": [...], "source": "run" | "who" | "settings" | "spells" | None, "sure", "evidence"}.
+
+        fixed: classes set by hand for this run; saved: your classes from Settings (already checked against /who)."""
+        w = self.who(server, name, at)
+        if fixed:
+            return {"name": name, "classes": list(fixed), "source": "run", "sure": True, "evidence": {}, "alts": {},
+                    "level": w.get("level") if w else None}
         if saved and len(saved) == 3:
             src = "who" if w and w["classes"][:3] == list(saved) else "settings"
             return {"name": name, "classes": list(saved), "source": src, "sure": True, "evidence": {}, "alts": {},
@@ -208,10 +254,11 @@ class ClassSpotter:
             p["sure"] for p in picks if p["class"] in ev) and len(out) == 3, "evidence": ev, "alts": alts,
             "level": w.get("level") if w else None}
 
-    def group(self, char, players, saved_me=None):
+    def group(self, char, players, saved_me=None, at=None, fixed=None):
         """You plus the other players of a run, each with their classes (as far as the log shows)."""
         me, server = self._split(char)
-        rows = [dict(self.classes_of(server, me, saved_me), you=True)]
+        fixed = fixed or {}
+        rows = [dict(self.classes_of(server, me, saved_me, at, fixed.get(me)), you=True)]
         for p in sorted(players or ()):
-            rows.append(dict(self.classes_of(server, p), you=False))
+            rows.append(dict(self.classes_of(server, p, None, at, fixed.get(p)), you=False))
         return rows

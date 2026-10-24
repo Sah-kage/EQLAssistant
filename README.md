@@ -182,7 +182,9 @@ Each submission carries:
 - a picture of the crawl timer window (the window takes it of itself when the run finishes; if it wasn't open, the app draws the same card);
 - the proof: the run's log lines and hash chain, so the site re-checks the time.
 
-**How group members' classes are found.** `/who` is exact: type `/who` in the zone with your group before you start (EQL shows `[60 Paladin/Cleric/Wizard] Name`). Without it the app guesses from what they do in your log: spells they cast, heal or hit with ("Bobbin hit a ghoul for 300 points of cold damage by Ice Comet"), songs, and skills like backstab, frenzy, bash and kick. Spells are matched against EQLWiki's spell lists for each class, and it picks the fewest classes (up to three) that explain everything seen, preferring spells only one class has. Guesses show with a dashed outline and a "?" where two classes fit equally. Pure melee classes and classes that didn't do anything visible can't be guessed.
+**How classes are found.** `/who` is used first: type `/who` in the zone with your group before you start. Any form that names classes in the brackets is read (`[60 Wizard]`, `[60 Paladin/Cleric/Wizard]`, `[60 Pal Clr Wiz]`, class titles like `[60 Arch Mage]`). If `/who` only shows one class, the other two come from your Settings (for you) or from what the log shows the player doing. Without `/who` the app guesses from spells they cast, heal or hit with ("Bobbin hit a ghoul for 300 points of cold damage by Ice Comet"), songs, and skills like backstab, frenzy, bash and kick, matched against EQLWiki's spell lists. Guesses show with a dashed outline and a "?" where two classes fit equally.
+
+**Loadouts change classes**, so each `/who` is kept with its time and a run uses the `/who` nearest to it. In Settings, each character has its own three classes; a newer `/who` that lists three different classes replaces them, and a newer `/who` showing a class that isn't in them shows a warning. To correct one run, open it on the Crawls tab and use **Edit** next to any player, including you. `/who` lines the app couldn't read are listed in Settings so they can be reported.
 
 ## Death recap
 

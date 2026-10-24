@@ -144,6 +144,69 @@ class CharmTests(unittest.TestCase):
         self.assertEqual(c._summary(r, T0 + 400)["players"], ["Tom"])
 
 
+class WhoAndLoadoutTests(unittest.TestCase):
+    def test_who_formats(self):
+        s = ClassSpotter({})
+        lines = {"Aa": "[60 Wizard] Aaa (Gnome) <Guild>", "Bb": "[60 Pal Clr Wiz] Bbb (Gnome)",
+                 "Cc": "[55 Shadow Knight Bard Rogue] Ccc (Troll)", "Dd": " AFK [60 Arch Mage] Ddd (Gnome)",
+                 "Ee": "[60 Paladin / Cleric / Wizard] Eee (Human) ZONE: unrest"}
+        for ln in lines.values():
+            s.feed("Me_x", 0, "[Mon Oct 12 20:00:00 2026] " + ln)
+        got = {n: s.who("x", n)["classes"] for n in ("Aaa", "Bbb", "Ccc", "Ddd", "Eee")}
+        self.assertEqual(got, {"Aaa": ["Wizard"], "Bbb": ["Paladin", "Cleric", "Wizard"],
+                               "Ccc": ["Shadow Knight", "Bard", "Rogue"], "Ddd": ["Magician"],
+                               "Eee": ["Paladin", "Cleric", "Wizard"]})
+        self.assertEqual(s.who("x", "aaa")["level"], 60)                      # names match whatever the case
+        s.feed("Me_x", 0, "[Mon Oct 12 20:00:00 2026] [60 Stormcaller] Fff (Gnome)")
+        s.feed("Me_x", 0, "[Mon Oct 12 20:00:00 2026] [ANONYMOUS] Ggg")
+        self.assertEqual(s.unread("x"), ["[60 Stormcaller] Fff (Gnome)"])   # shown in Settings to report
+
+    def test_loadout_history(self):
+        s = ClassSpotter({})
+        s.feed("Me_x", 1000, "[Mon Oct 12 20:00:00 2026] [60 Wizard/Cleric/Rogue] Bob (Gnome)")
+        s.feed("Me_x", 90000, "[Mon Oct 12 20:00:00 2026] [60 Bard/Monk/Druid] Bob (Gnome)")
+        self.assertEqual(s.classes_of("x", "Bob", at=1500)["classes"], ["Wizard", "Cleric", "Rogue"])
+        self.assertEqual(s.classes_of("x", "Bob", at=95000)["classes"], ["Bard", "Monk", "Druid"])
+        self.assertEqual(s.classes_of("x", "Bob")["classes"], ["Bard", "Monk", "Druid"])
+
+    def test_settings_vs_who(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(tmp, "Logs"))
+            app = App(log_dir=os.path.join(tmp, "Logs"), ddir=os.path.join(tmp, "data"))
+            ch = "Sahkage_rivervale"
+            app.set_my_classes(ch, ["Wizard", "Cleric", "Rogue"])
+            self.assertEqual(app.class_info(ch)["source"], "settings")
+            app.set_my_classes(ch, ["Wizard", "Cleric", "Bard"])                # can be changed again
+            self.assertEqual(app.my_classes(ch), ["Wizard", "Cleric", "Bard"])
+            now = time.time() + 10
+            app.crawls.classes.feed(ch, now, "[Mon Oct 12 20:00:00 2026] [60 Shaman] Sahkage (Troll)")
+            info = app.class_info(ch)
+            self.assertEqual(info["classes"], ["Wizard", "Cleric", "Bard"])
+            self.assertIn("Shaman", info["warning"])                           # loadout changed?
+            app.crawls.classes.feed(ch, now + 5, "[Mon Oct 12 20:00:00 2026] [60 Shaman/Monk/Druid] Sahkage (Troll)")
+            self.assertEqual((app.my_classes(ch), app.class_info(ch)["source"]), (["Shaman", "Monk", "Druid"], "who"))
+            time.sleep(0.01)
+            app.set_my_classes(ch, ["Wizard", "Cleric", "Bard"])                # picked after the /who: wins
+            app.cfg["leaderboard_classes_at"][ch] = now + 60
+            self.assertEqual(app.my_classes(ch), ["Wizard", "Cleric", "Bard"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_run_fix(self):
+        from eqlc.crawls import Crawls
+        c = Crawls({})
+        feed(c, "Me_rivervale", RUN)
+        r = c.runs[-1]
+        c.set_classes(r["id"], "Zed", ["Necromancer", "Rogue", "Wizard"])
+        c.set_classes(r["id"], "Me", ["Bard", "Monk", "Druid"])
+        g = {m["name"]: m for m in c._summary(r, T0 + 400)["group"]}
+        self.assertEqual((g["Zed"]["classes"], g["Zed"]["source"]), (["Necromancer", "Rogue", "Wizard"], "run"))
+        self.assertEqual(g["Me"]["classes"], ["Bard", "Monk", "Druid"])
+        c.set_classes(r["id"], "Zed", [])
+        self.assertEqual({m["name"]: m for m in c._summary(r, T0 + 400)["group"]}["Zed"]["source"], "spells")
+
+
 class Site(BaseHTTPRequestHandler):
     got = []
     reply = {"ok": True, "id": 42, "message": "Thanks! Your run is waiting for review."}

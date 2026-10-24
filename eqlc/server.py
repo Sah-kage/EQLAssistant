@@ -151,6 +151,7 @@ def make_handler(app):
                     return self._json({"cfg": app.cfg, "status": app.status, "active": app.active_char,
                                        "version": __version__, "classes": CLASSES,
                                        "my_classes": app.my_classes(char) if char else None, "char": char,
+                                       "class_info": {c: app.class_info(c) for c in app.characters()},
                                        "characters": app.characters(),
                                        "data_dir": app.ddir})
             self.send_error(404)
@@ -301,6 +302,18 @@ def make_handler(app):
                 app.save_state(force=True)
                 return self._json({"ok": True, "message": reply.get("message") or "Sent to the leaderboard.",
                                    "duplicate": bool(reply.get("duplicate")), "id": reply.get("id")})
+            if p == "/api/crawls/classes":
+                from .classes_data import CLASSES
+                cl = [c for c in (body.get("classes") or []) if c in CLASSES]
+                if cl and (len(cl) > 3 or len(set(cl)) != len(cl)):
+                    return self._json({"ok": False, "error": "Pick up to three different classes"}, 400)
+                with app.lock:
+                    try:
+                        app.crawls.set_classes(int(body.get("id")), str(body.get("name") or ""), cl)
+                    except (TypeError, ValueError) as e:
+                        return self._json({"ok": False, "error": str(e) or "No such run"}, 400)
+                app.save_state(force=True)
+                return self._json({"ok": True})
             if p == "/api/classes/mine":
                 char = body.get("char") or app.char()
                 try:
