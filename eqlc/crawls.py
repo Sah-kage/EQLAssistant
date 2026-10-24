@@ -631,17 +631,36 @@ class Crawls:
         return self.classes.group(r["char"], self.players(r), self.saved_classes(r["char"]), at=r.get("start"),
                                   fixed=r.get("class_fix"))
 
+    def detected(self, r, name):
+        """What the log (or Settings, for you) says someone's classes were in a run, ignoring edits."""
+        me, _, server = r["char"].partition("_")
+        saved = self.saved_classes(r["char"]) if name == me else None
+        return self.classes.classes_of(server or "-", name, saved, at=r.get("start"))
+
     def set_classes(self, rid, name, classes):
-        """Classes set by hand for one person in one run (e.g. a loadout the log can't show)."""
+        """Classes set by hand for one person in one run (e.g. a loadout the log can't show).
+        Every edit is remembered (what it was, what it became) and sent with the run, so it shows as edited."""
         r = self._get(rid)
         if not r:
             raise ValueError("No such run")
         fix = r.setdefault("class_fix", {})
-        if classes:
+        edits = r.setdefault("class_edits", {})
+        was = self.detected(r, name)
+        if classes and list(classes) != was["classes"]:
+            if fix.get(name) == list(classes):
+                return False
             fix[name] = list(classes)
-        else:
+            edits[name] = {"from": was["classes"], "from_source": was["source"], "to": list(classes),
+                           "at": time.time()}
+        else:                                     # back to what the log shows
+            if name not in fix:
+                return False
             fix.pop(name, None)
+            edits.pop(name, None)
+        if r.get("submitted"):
+            r["changed_since_sent"] = True
         self.dirty = True
+        return True
 
     def _snap(self, r):
         if not self.proof_dir:
@@ -693,6 +712,8 @@ class Crawls:
             "xp": r["xp"], "reward_xp": r["reward_xp"], "refund": r["refund"],
             "chest": [{"item": k, "qty": v} for k, v in sorted(r["chest"].items())], "notes": r["notes"],
             "group": self.group(r), "submitted": r.get("submitted"), "submit_error": r.get("submit_error"),
+            "class_edits": r.get("class_edits") or {}, "changed_since_sent": bool(r.get("changed_since_sent")),
+            "submissions": len(r.get("submissions") or ([1] if r.get("submitted") else [])),
             "snapshot": self._snap(r) if r["status"] == "done" else False,
         }
 

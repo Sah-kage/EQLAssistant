@@ -318,6 +318,37 @@ class SubmitTests(unittest.TestCase):
         self.assertNotIn("submit_error", r)
         self.assertEqual(Site.got[-1][1]["video"], "")
 
+    def test_edit_and_resubmit(self):
+        feed(self.app.crawls, self.char, [(-5, "[Mon Oct 12 19:59:00 2026] [60 Wizard/Cleric/Rogue] Sahkage (Gnome)")]
+             + RUN)
+        r = self.app.crawls.runs[-1]
+        self.app.submit_run(r["id"])
+        first = Site.got[-1][1]
+        self.assertEqual((first["edited"], first["edits"], first["resubmit_of"], first["submission"]),
+                         (False, [], None, 1))
+        with self.assertRaises(ValueError):                       # nothing changed: can't send again
+            self.app.submit_run(r["id"])
+        # fix a group member's classes after sending
+        self.assertTrue(self.app.crawls.set_classes(r["id"], "Zed", ["Necromancer", "Rogue", "Wizard"]))
+        self.assertTrue(r["changed_since_sent"])
+        self.app.auto_submit()                                     # never resent by itself
+        time.sleep(0.2)
+        self.assertEqual(len(Site.got), 1)
+        self.app.submit_run(r["id"], classes=["Wizard", "Cleric", "Bard"])       # and your own
+        body = Site.got[-1][1]
+        self.assertTrue(body["edited"])
+        self.assertEqual((body["resubmit_of"], body["submission"], body["classes"]), (42, 2, ["Wizard", "Cleric", "Bard"]))
+        edits = {e["name"]: e for e in body["edits"]}
+        self.assertEqual((edits["Sahkage"]["from"], edits["Sahkage"]["to"], edits["Sahkage"]["you"]),
+                         (["Wizard", "Cleric", "Rogue"], ["Wizard", "Cleric", "Bard"], True))
+        self.assertEqual(edits["Zed"]["from_source"], "spells")
+        self.assertTrue({g["name"]: g for g in body["group"]}["Zed"]["edited"])
+        s = self.app.crawls._summary(r, time.time())
+        self.assertEqual((s["submissions"], s["changed_since_sent"], s["submitted"]["edited"]), (2, False, True))
+        # setting a class back to what the log shows removes the edit
+        self.app.crawls.set_classes(r["id"], "Zed", [])
+        self.assertNotIn("Zed", r["class_edits"])
+
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)
         r = self.app.crawls.runs[-1]

@@ -13,6 +13,11 @@ POST <site>/api.php?action=app_submit, gzip'd JSON:
              source: "who" (from /who), "settings", "spells" (guessed from spells / skills seen)
   run        {"zone", "tier", "level", "duration", "party", "kills", "deaths", "start", "end"}
   screenshot {"type": "image/png", "name", "data": base64} of the crawl timer window
+  edited     true when the player changed anyone's classes from what the app found
+  edits      [{"name", "you", "from", "from_source", "to", "at"}]: what the log showed, and what it became
+             (group entries carry "edited": true too)
+  resubmit_of  the site's id of this run's previous submission (a correction), or null
+  submission   1 for the first send of a run, 2+ for resubmissions
 """
 import base64
 import gzip

@@ -297,7 +297,7 @@ class App:
         if why:
             raise ValueError(why)
         name0 = split_char(r["char"])[0]
-        classes = list(classes or (r.get("class_fix") or {}).get(name0) or self.my_classes(r["char"]) or [])
+        classes = list((r.get("class_fix") or {}).get(name0) or classes or self.my_classes(r["char"]) or [])
         if len(classes) != 3:
             raise ValueError("Pick your three classes first (Settings, or Submit to leaderboard…).")
         name, server = split_char(r["char"])
@@ -312,9 +312,18 @@ class App:
         run = {k: summary.get(k) for k in ("zone", "tier_label", "level", "duration", "party", "kills", "deaths",
                                            "start", "end", "stopped")}
         run["tier"] = run.pop("tier_label")
-        return L.payload(proof, server, classes, video, summary["party"],
-                         [{k: g.get(k) for k in ("name", "classes", "source", "sure", "you", "level")} for g in group],
+        edits = r.get("class_edits") or {}
+        body = L.payload(proof, server, classes, video, summary["party"],
+                         [dict({k: g.get(k) for k in ("name", "classes", "source", "sure", "you", "level")},
+                               edited=g["name"] in edits) for g in group],
                          run, png, f"{name}-run-{r['id']}.png")
+        # classes changed by hand are flagged, with what the log showed, so the site can show the run as edited
+        body["edited"] = bool(edits)
+        body["edits"] = [dict(e, name=n, you=n == name0) for n, e in sorted(edits.items())]
+        prev = r.get("submitted")
+        body["resubmit_of"] = prev.get("id") if prev else None
+        body["submission"] = len(r.get("submissions") or ([1] if prev else [])) + 1
+        return body
 
     def submit_run(self, run_id, classes=None, video="", auto=False):
         """Send one finished run to the leaderboard. Returns the site's reply; raises ValueError."""
@@ -324,10 +333,15 @@ class App:
             r = self.crawls._get(run_id)
             if not r:
                 raise ValueError("No such run")
-            if r.get("submitted"):
-                raise ValueError("This run was already sent to the leaderboard.")
+            if r.get("submitted") and not r.get("changed_since_sent"):
+                raise ValueError("This run was already sent to the leaderboard. Edit its classes to send it again.")
+            if auto and r.get("submitted"):
+                raise ValueError("Edited runs are only sent again by hand.")
             if classes:
-                self.set_my_classes(r["char"], classes)
+                me = split_char(r["char"])[0]
+                if not self.my_classes(r["char"]):
+                    self.set_my_classes(r["char"], classes)       # first time: remember them for this character
+                self.crawls.set_classes(r["id"], me, classes)     # different from what was detected: an edit
             body = self.build_submission(r, classes, video)
             url = self.cfg.get("leaderboard_url", "")
         try:
@@ -340,8 +354,11 @@ class App:
         with self.lock:
             r["submitted"] = {"at": time.time(), "id": reply.get("id"), "auto": auto,
                               "message": reply.get("message") or "", "duplicate": bool(reply.get("duplicate")),
-                              "url": reply.get("url") or ""}
+                              "url": reply.get("url") or "", "edited": body["edited"],
+                              "edits": body["edits"], "resubmit_of": body["resubmit_of"]}
+            r.setdefault("submissions", []).append(dict(r["submitted"], classes=body["classes"]))
             r.pop("submit_error", None)
+            r.pop("changed_since_sent", None)
             self.crawls.dirty = True
         return reply
 

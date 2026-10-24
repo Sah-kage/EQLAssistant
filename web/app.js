@@ -549,16 +549,24 @@ function groupHtml(r, edit) {
       const tip = (ev ? 'Seen: ' + ev.join(', ') : '') + (alts && alts.length ? ` — could also be ${alts.join(' or ')}` : '');
       return `<span class="cls${ev && !m.sure ? ' guess' : ''}" title="${esc(tip)}">${esc(c)}${alts && alts.length ? '?' : ''}</span>`;
     }).join(' ') : '<span class="muted">unknown</span>';
+    const ed = (r.class_edits || {})[m.name];
     const missing = m.classes.length && m.classes.length < 3 ? ` <span class="muted">+${3 - m.classes.length} not seen</span>` : '';
-    return `<tr><td>${esc(m.name)}${m.you ? ' <span class="muted">(you)</span>' : ''}</td><td>${cls}${missing}</td>
+    return `<tr><td>${esc(m.name)}${m.you ? ' <span class="muted">(you)</span>' : ''}</td><td>${cls}${missing}${ed ? ` <span class="edited-tag" title="Edited: ${esc(editTip(ed))}">EDITED</span>` : ''}</td>
       <td class="muted">${m.source ? SRC_LABEL[m.source] : (m.you ? 'pick them in Settings, or type /who' : 'nothing seen yet — /who them')}</td>
       <td>${!edit ? '' : `<button class="ghost tiny" data-editcls="${esc(m.name)}" data-run="${r.id}" data-cur="${esc(m.classes.join('/'))}" data-fixed="${m.source === 'run' ? 1 : 0}" title="Set the classes for this run">Edit</button>`}
         ${m.you || !edit ? '' : `<button class="ghost tiny" data-player="${esc(m.name)}" data-is="0" title="A charmed mob or a pet, not a group member">Not a player</button>`}</td></tr>`;
   }).join('')}</table>${edit && (r.left_out || []).length ? `<p class="hint">Left out as charmed mobs or pets: ${r.left_out.map(n =>
     `${esc(n)} <button class="ghost tiny" data-player="${esc(n)}" data-is="1">Is a player</button>`).join(' ')}</p>` : ''}`;
 }
+const editTip = e => `${e.from && e.from.length ? e.from.join('/') : 'unknown'}${e.from_source ? ' (' + (SRC_LABEL[e.from_source] || e.from_source) + ')' : ''} → ${e.to.join('/')}`;
 function lbStatus(r) {
-  if (r.submitted) return `<span class="lb ok" title="${esc(r.submitted.message || '')}">✓ Sent to the leaderboard ${dt(r.submitted.at)}${r.submitted.auto ? ' (automatically)' : ''}${r.submitted.duplicate ? ' — the site already had it' : ''}</span>`;
+  if (r.submitted) {
+    const s = r.submitted;
+    const sent = `<span class="lb ok" title="${esc(s.message || '')}">✓ ${r.submissions > 1 ? `Resubmitted (${r.submissions}×)` : 'Sent to the leaderboard'} ${dt(s.at)}${s.auto ? ' (automatically)' : ''}${s.duplicate ? ' — the site already had it' : ''}</span>`
+      + (s.edited ? ` <span class="edited-tag" title="${esc((s.edits || []).map(e => e.name + ': ' + editTip(e)).join('; '))}">EDITED</span>` : '');
+    if (r.changed_since_sent) return sent + ` <span class="lb err">Classes changed since it was sent.</span> <button class="primary" data-submit="${r.id}">Resubmit…</button>`;
+    return sent + ` <button class="ghost tiny" data-submit="${r.id}" title="Change the classes and send the run again. It will show as edited.">Edit classes &amp; resubmit…</button>`;
+  }
   const err = r.submit_error ? `<span class="lb err">Not sent: ${esc(r.submit_error.msg)}</span> ` : '';
   const can = r.status === 'done' && r.start_known && r.proof && r.proof.status !== 'suspicious';
   return err + (can ? `<button class="primary" data-submit="${r.id}">${r.submit_error ? 'Try again…' : 'Submit to leaderboard…'}</button>` : '');
@@ -571,23 +579,34 @@ async function submitDialog(id) {
   if (!CLASSES.length) { const s = await get('/api/settings'); CLASSES = (s && s.classes) || []; }
   const me = (r.group || []).find(m => m.you) || {classes: []};
   const mine = me.classes || [];
-  openModal(`<h2>Submit to the leaderboard</h2>
+  const again = !!r.submitted;
+  const others = (r.group || []).filter(m => !m.you);
+  openModal(`<h2>${again ? 'Edit classes and resubmit' : 'Submit to the leaderboard'}</h2>
     <p><b>${esc(r.zone)}</b> ${lvlChip(r)} ${partyChip(r)} · <b>${hms(r.duration)}</b> · ${proofBadge(r.proof)}</p>
     <img class="snap" src="/api/crawls/snapshot?id=${r.id}" alt="" onerror="this.remove()">
     <p>Your three classes</p>
     <div class="cls3">${[0, 1, 2].map(i => clsSelect('sub-c' + i, mine[i])).join('')}</div>
     ${me.source === 'spells' ? '<p class="hint">These were guessed from the spells you cast. Check them before sending.</p>' : ''}
-    <label class="f">Video link (optional)<input id="sub-video" placeholder="https://youtu.be/…"></label>
-    ${r.party === 'group' ? `<p>Group</p>${groupHtml(r)}<p class="hint">Group members' classes come from /who where you used it, otherwise they're guessed from the spells and skills seen in your log. Type <code>/who</code> with your group in the zone before you start for exact classes.</p>` : ''}
+    ${others.length ? `<p>Group</p><table class="grp">${others.map((m, n) => `<tr><td>${esc(m.name)}<div class="muted small">${m.source ? SRC_LABEL[m.source] : 'nothing seen'}</div></td>
+      <td><div class="cls3">${[0, 1, 2].map(k => clsSelect(`sub-g${n}-${k}`, m.classes[k])).join('')}</div></td></tr>`).join('')}</table>
+      <p class="hint">Group members' classes come from /who where you used it, otherwise they're guessed from the spells and skills seen in your log.</p>` : ''}
+    <p class="hint edited-note">Changing any class from what the app found marks the run as <b>edited</b>: the leaderboard gets what the log showed and what you changed it to, and shows the run as edited.${again ? ' Resubmitting sends the run again as a correction of the one already sent.' : ''}</p>
+    ${again ? '' : '<label class="f">Video link (optional)<input id="sub-video" placeholder="https://youtu.be/…"></label>'}
     <p class="hint">Sent with the run: character, server, dungeon, difficulty, time, solo or group, the picture of the crawl timer and the log lines of the run (so the site can check the time).</p>
-    <div class="modal-btns"><span id="sub-msg" class="muted"></span><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" id="sub-go">Send</button></div>`);
+    <div class="modal-btns"><span id="sub-msg" class="muted"></span><button class="ghost" onclick="closeModal()">Cancel</button><button class="primary" id="sub-go">${again ? 'Resubmit' : 'Send'}</button></div>`);
   $('#sub-go').onclick = async () => {
     const classes = [0, 1, 2].map(i => $('#sub-c' + i).value).filter(Boolean);
     if (classes.length !== 3 || new Set(classes).size !== 3) { $('#sub-msg').textContent = 'Pick three different classes.'; return; }
     $('#sub-go').disabled = true; $('#sub-msg').textContent = 'Sending…';
-    const res = await post('/api/crawls/submit', {char, id, classes, video: $('#sub-video').value});
+    for (const [n, m] of others.entries()) {
+      const want = [0, 1, 2].map(k => $(`#sub-g${n}-${k}`).value).filter(Boolean);
+      if (want.join('/') === m.classes.join('/')) continue;
+      if (new Set(want).size !== want.length) { $('#sub-go').disabled = false; $('#sub-msg').textContent = `Pick different classes for ${m.name}.`; return; }
+      await post('/api/crawls/classes', {char, id, name: m.name, classes: want});
+    }
+    const res = await post('/api/crawls/submit', {char, id, classes, video: again ? '' : $('#sub-video').value});
     if (!res || !res.ok) { $('#sub-go').disabled = false; $('#sub-msg').textContent = (res && res.error) || 'Could not send'; return; }
-    $('#modal-body').innerHTML = `<h2>Sent ✓</h2><p>${esc(res.message || 'Your run is on the leaderboard.')}</p><div class="modal-btns"><button class="primary" onclick="closeModal()">OK</button></div>`;
+    $('#modal-body').innerHTML = `<h2>${again ? 'Resubmitted' : 'Sent'} ✓</h2><p>${esc(res.message || 'Your run is on the leaderboard.')}</p><div class="modal-btns"><button class="primary" onclick="closeModal()">OK</button></div>`;
     refreshCrawls();
   };
 }
