@@ -378,6 +378,24 @@ class EndToEnd(unittest.TestCase):
         self.assertFalse(races("Tester_legends")["Ogre"])
         self.assertTrue(os.path.exists(p1))
 
+    def test_deleted_logs_not_listed(self):
+        extra = os.path.join(self.logs, "eqlog_Other_paineel.txt")
+        with open(extra, "w") as fh:
+            fh.write("[Sun Oct 11 20:00:00 2026] You have entered Unrest.\n")
+        self.app.poll()
+        self.assertEqual(self.app.characters(), ["Other_paineel", "Tester_legends"])
+        self.app.cfg["character"] = "Other_paineel"
+        self.assertEqual(self.app.char(), "Other_paineel")
+        os.remove(extra)
+        self.app.poll()
+        self.assertEqual(self.app.characters(), ["Tester_legends"])
+        self.assertEqual(self.app.char(), "Tester_legends")             # falls back to the active log
+        self.assertNotIn(extra, self.app.files)
+        with open(extra, "w") as fh:                                     # put back: listed again
+            fh.write("[Sun Oct 11 20:00:00 2026] You have entered Unrest.\n")
+        self.app.poll()
+        self.assertIn("Other_paineel", self.app.characters())
+
     def test_migrate_to_per_server(self):
         from eqlc.core import App
         ddir = os.path.join(self.tmp, "old")

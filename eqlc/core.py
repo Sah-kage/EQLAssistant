@@ -384,7 +384,10 @@ class App:
         return t
 
     def char(self):
-        return self.cfg.get("character") or self.active_char
+        pick = self.cfg.get("character")
+        if pick and pick not in {c for _, _, c in self.log_chars()}:
+            pick = None                                   # its log was deleted: follow the active log
+        return pick or self.active_char
 
     # -- log reading --------------------------------------------------------
     def _open_file(self, path, char):
@@ -586,9 +589,9 @@ class App:
         return sorted(out, reverse=True)
 
     def characters(self):
-        """Every character, one per name + server."""
-        return sorted({c for _, _, c in self.log_chars()} |
-                      {c for c in set(self.sky.characters()) | set(self.trackers) if "_" in c})
+        """Every character with a log file in the Logs folder, one per name + server.
+        A character whose log was deleted isn't listed (its saved data is kept, and comes back with the log)."""
+        return sorted({c for _, _, c in self.log_chars()})
 
     def migrate_per_server(self):
         """Older versions keyed everything by character name only. Move each name's data to that
@@ -694,9 +697,17 @@ class App:
                 self.migrate_per_server()
         logs = self.log_chars()
         if not logs:
+            self.files.clear()
+            self.active_char = None
             self.status = "No eqlog_*.txt files yet - type /log in game"
             return
         self.active_char = logs[0][2]
+        here = {p for _, p, _ in logs}
+        for p in [p for p in self.files if p not in here]:     # log deleted (or moved): stop watching it
+            with self.lock:
+                info = self.files.pop(p)
+                if info["char"] not in {c for _, _, c in logs}:
+                    self.trackers.pop(info["char"], None)
         for _, p, char in logs:
             if p not in self.files:
                 self._open_file(p, char)

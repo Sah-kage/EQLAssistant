@@ -43,6 +43,7 @@ $$('[data-open]').forEach(b => b.onclick = async () => {
 const charLabel = c => { if (!c) return '—'; const i = c.indexOf('_'); return i < 0 ? c : `${c.slice(0, i)} (${c.slice(i + 1)})`; };
 function fillChars(list, active) {
   const sel = $('#charsel');
+  if (char && !list.includes(char)) { char = ''; selFight = null; settingsLoaded = false; }   // its log was deleted
   const want = ['', ...list];
   const cur = [...sel.options].map(o => o.value);
   if (JSON.stringify(cur) !== JSON.stringify(want) || sel.options[0]?.text !== `Active: ${charLabel(active)}`) {
