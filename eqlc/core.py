@@ -359,6 +359,11 @@ class App:
             r.setdefault("submissions", []).append(dict(r["submitted"], classes=body["classes"]))
             r.pop("submit_error", None)
             r.pop("changed_since_sent", None)
+            if body["edited"] and not reply.get("edited"):
+                # The site didn't confirm the edit (a leaderboard site from before edited runs):
+                # say so, and allow sending it again once the site is updated.
+                r["submitted"]["site_missed_edit"] = True
+                r["changed_since_sent"] = True
             self.crawls.dirty = True
         return reply
 

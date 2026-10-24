@@ -210,6 +210,7 @@ class WhoAndLoadoutTests(unittest.TestCase):
 class Site(BaseHTTPRequestHandler):
     got = []
     reply = {"ok": True, "id": 42, "message": "Thanks! Your run is waiting for review."}
+    knows_edits = True
 
     def log_message(self, *a):
         pass
@@ -218,8 +219,12 @@ class Site(BaseHTTPRequestHandler):
         raw = self.rfile.read(int(self.headers["Content-Length"]))
         if self.headers.get("Content-Encoding") == "gzip":
             raw = gzip.decompress(raw)
-        Site.got.append((self.path, json.loads(raw)))
-        body = json.dumps(Site.reply).encode()
+        got = json.loads(raw)
+        Site.got.append((self.path, got))
+        reply = dict(Site.reply)
+        if got.get("edited") and Site.knows_edits:
+            reply["edited"] = True                 # a site that stores edited runs says so
+        body = json.dumps(reply).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -348,6 +353,23 @@ class SubmitTests(unittest.TestCase):
         # setting a class back to what the log shows removes the edit
         self.app.crawls.set_classes(r["id"], "Zed", [])
         self.assertNotIn("Zed", r["class_edits"])
+
+    def test_old_site_misses_edit(self):
+        feed(self.app.crawls, self.char, [(-5, "[Mon Oct 12 19:59:00 2026] [60 Wizard/Cleric/Rogue] Sahkage (Gnome)")]
+             + RUN)
+        r = self.app.crawls.runs[-1]
+        self.app.crawls.set_classes(r["id"], "Zed", ["Necromancer", "Rogue", "Wizard"])
+        Site.knows_edits = False
+        try:
+            self.app.submit_run(r["id"])
+        finally:
+            Site.knows_edits = True
+        self.assertTrue(Site.got[-1][1]["edited"])
+        self.assertTrue(r["submitted"]["site_missed_edit"] and r["changed_since_sent"])
+        self.app.submit_run(r["id"])                               # site updated: send again, same classes
+        self.assertEqual(Site.got[-1][1]["submission"], 2)
+        self.assertNotIn("site_missed_edit", r["submitted"])
+        self.assertFalse(r.get("changed_since_sent"))
 
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)

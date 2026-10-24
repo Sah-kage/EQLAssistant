@@ -564,6 +564,7 @@ function lbStatus(r) {
     const s = r.submitted;
     const sent = `<span class="lb ok" title="${esc(s.message || '')}">✓ ${r.submissions > 1 ? `Resubmitted (${r.submissions}×)` : 'Sent to the leaderboard'} ${dt(s.at)}${s.auto ? ' (automatically)' : ''}${s.duplicate ? ' — the site already had it' : ''}</span>`
       + (s.edited ? ` <span class="edited-tag" title="${esc((s.edits || []).map(e => e.name + ': ' + editTip(e)).join('; '))}">EDITED</span>` : '');
+    if (s.site_missed_edit) return sent + ` <span class="lb err" title="The leaderboard's reply didn't confirm the run as edited. Its site needs the version with edited runs (and sql/upgrade-6-edited-classes.sql).">The leaderboard didn't record this run as edited — it may need updating. Resubmit once it has been.</span> <button class="primary" data-submit="${r.id}">Resubmit…</button>`;
     if (r.changed_since_sent) return sent + ` <span class="lb err">Classes changed since it was sent.</span> <button class="primary" data-submit="${r.id}">Resubmit…</button>`;
     return sent + ` <button class="ghost tiny" data-submit="${r.id}" title="Change the classes and send the run again. It will show as edited.">Edit classes &amp; resubmit…</button>`;
   }
