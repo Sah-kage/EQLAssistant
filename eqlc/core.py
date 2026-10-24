@@ -41,6 +41,8 @@ DEFAULTS = {
     "raid_reset_weekday": 1,      # 0=Mon .. 6=Sun  (EQL: Tuesday)
     "raid_reset_hour": 8,         # Pacific time    (EQL: 8am)
     "port": 7377,
+    "check_updates": True,         # look for a newer EQL Assistant on GitHub (start, then every 6 hours)
+    "update_dismissed": "",        # a version the player said "not now" to
     "leaderboard_url": "",        # EQL Crawl Times site that finished crawls are sent to
     "leaderboard_auto": True,     # send verified crawls there automatically when they finish
     "leaderboard_classes": {},    # character id -> your three classes (sent with each run)
@@ -146,6 +148,8 @@ class App:
         self.quests = Quests(self.state, self.sky)
         self.races = Races(self.state, self.factions)
         self.deaths = DeathRecap(self.state)
+        from .updates import Updates
+        self.updates = Updates(self.cfg, self.save_cfg)
         self.zone_info = {}
         self.state.setdefault("crawl_scanned", {})
         self.state.setdefault("history_scan", {})

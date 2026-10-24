@@ -54,6 +54,8 @@ def make_handler(app):
             p = u.path
             if not p.startswith("/api/"):
                 return self._static(p)
+            if p == "/api/update":
+                return self._json(app.updates.view())
             if p == "/api/crawls/snapshot":
                 from . import snapshot as S
                 with app.lock:
@@ -302,6 +304,15 @@ def make_handler(app):
                 app.save_state(force=True)
                 return self._json({"ok": True, "message": reply.get("message") or "Sent to the leaderboard.",
                                    "duplicate": bool(reply.get("duplicate")), "id": reply.get("id")})
+            if p.startswith("/api/update/"):
+                if p == "/api/update/check":
+                    return self._json(dict(app.updates.check(), ok=True))
+                if p == "/api/update/dismiss":
+                    app.updates.dismiss(str(body.get("version") or ""))
+                    return self._json({"ok": True})
+                if p == "/api/update/open":
+                    return self._json({"ok": True, "url": app.updates.open(body.get("which") or "download")})
+                return self.send_error(404)
             if p == "/api/crawls/classes":
                 from .classes_data import CLASSES
                 cl = [c for c in (body.get("classes") or []) if c in CLASSES]

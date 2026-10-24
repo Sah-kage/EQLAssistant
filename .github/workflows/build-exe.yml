@@ -71,6 +71,20 @@ jobs:
           path: |
             dist/EQLAssistant.exe
             dist/EQLAssistant.exe.sha256
+      - name: Release notes
+        if: steps.rel.outputs.release == 'true'
+        shell: pwsh
+        run: |
+          # "What's new" = the commit message of this release (the app shows it in its update banner)
+          $msg = (git log -1 --format=%B) | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }
+          $notes = @("## What's new", "") + $msg + @("", "## Download",
+            "Download **EQLAssistant.exe** below and double-click it. No install needed.", "",
+            "- Windows may show ""Windows protected your PC"" because the file isn't code-signed. Click **More info → Run anyway**.",
+            "- In EverQuest Legends, type ``/log on``, then pick your ``Logs`` folder in the app's **Settings**.",
+            "- Run the game in **borderless windowed** mode so the overlays stay on top.",
+            "- Updating? Quit the old EQL Assistant and run the new EQLAssistant.exe. Your settings and data are kept.")
+          $notes -join "`n" | Set-Content -Encoding utf8 release-notes.md
+          Get-Content release-notes.md
       - name: Publish release
         if: steps.rel.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
@@ -82,10 +96,4 @@ jobs:
             dist/EQLAssistant.exe
             dist/EQLAssistant.exe.sha256
           generate_release_notes: true
-          body: |
-            ## Download
-            Download **EQLAssistant.exe** below and double-click it. No install needed.
-
-            - Windows may show "Windows protected your PC" because the file isn't code-signed. Click **More info → Run anyway**.
-            - In EverQuest Legends, type `/log on`, then pick your `Logs` folder in the app's **Settings**.
-            - Run the game in **borderless windowed** mode so the overlays stay on top.
+          body_path: release-notes.md

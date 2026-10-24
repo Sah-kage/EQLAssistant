@@ -444,3 +444,10 @@ table.mycls .cls3 select { min-width:110px; }
 table.mycls .small, .small { font-size:11px; }
 .edited-tag { font-size:10px; font-weight:600; letter-spacing:.05em; padding:1px 6px; border-radius:8px; background:#e3b34126; color:var(--gold); cursor:help; }
 .edited-note b { color:var(--gold); }
+
+/* new version banner */
+.update-banner { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 20px; background:#e3b3411f; border-bottom:1px solid #e3b34155; }
+.update-banner > span { margin-right:auto; }
+.update-banner b { color:var(--gold); }
+#modal .notes { white-space:pre-wrap; max-height:50vh; overflow:auto; background:var(--panel2); border-radius:8px; padding:10px 12px; font-size:13px; }
+.update-banner[hidden] { display:none; }

@@ -1267,7 +1267,7 @@ async function refreshOverlays(force) {
 $$('[data-goto]').forEach(b => b.onclick = () => document.querySelector(`nav button[data-tab="${b.dataset.goto}"]`).click());
 
 // ---------- settings ----------
-const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names', 'leaderboard_url', 'leaderboard_auto'];
+const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names', 'leaderboard_url', 'leaderboard_auto', 'check_updates'];
 let settingsLoaded = false;
 async function refreshSettings(force) {
   const d = await get('/api/settings?' + q());
@@ -1323,6 +1323,51 @@ function renderMyClasses(d) {
   });
 }
 
+// ---------- updates ----------
+let updateInfo = null;
+function updateStatusText(u) {
+  if (!u) return '';
+  if (u.checking) return 'Checking…';
+  if (u.error && !u.latest) return u.error;
+  if (u.available) return `Version ${u.latest} is available (you have ${u.current}).`;
+  return u.checked ? `You have the latest version (${u.current}) · checked ${dt(u.checked)}` : `You have ${u.current}.`;
+}
+function renderUpdate(u) {
+  updateInfo = u;
+  const b = $('#update-banner');
+  if ($('#update-status')) $('#update-status').textContent = updateStatusText(u);
+  if (!u || !u.available || u.dismissed) { b.hidden = true; return; }
+  b.hidden = false;
+  b.innerHTML = `<span><b>EQL Assistant ${esc(u.latest)} is available</b> — you have ${esc(u.current)}.</span>
+    <button class="primary" id="upd-dl">Download</button>
+    <button class="ghost" id="upd-notes">What's new</button>
+    <button class="ghost" id="upd-later" title="Hide this until the next version">Not now</button>`;
+  $('#upd-dl').onclick = () => downloadUpdate();
+  $('#upd-notes').onclick = () => {
+    openModal(`<h2>What's new in ${esc(u.latest)}</h2>
+      <div class="notes">${esc(u.notes || 'See the release page for details.')}</div>
+      <div class="modal-btns"><button class="ghost" id="upd-page">Open the release page</button><button class="primary" id="upd-dl2">Download</button></div>`);
+    $('#upd-page').onclick = () => post('/api/update/open', {which: 'page'});
+    $('#upd-dl2').onclick = () => downloadUpdate();
+  };
+  $('#upd-later').onclick = async () => { await post('/api/update/dismiss', {version: u.latest}); b.hidden = true; };
+}
+async function downloadUpdate() {
+  await post('/api/update/open', {which: 'download'});
+  openModal(`<h2>Downloading EQL Assistant ${esc(updateInfo.latest)}</h2>
+    <p>The new <code>EQLAssistant.exe</code> is downloading in your web browser.</p>
+    <ol><li>Quit EQL Assistant (Settings → Quit EQL Assistant).</li>
+      <li>Replace your old <code>EQLAssistant.exe</code> with the new one (or just run the new one).</li>
+      <li>Start it again. Your settings and saved data are kept.</li></ol>
+    <div class="modal-btns"><button class="primary" onclick="closeModal()">OK</button></div>`);
+}
+async function refreshUpdate() { const u = await get('/api/update'); if (u) renderUpdate(u); }
+$('#update-check').onclick = async () => {
+  $('#update-status').textContent = 'Checking…';
+  const u = await post('/api/update/check', {});
+  if (u) { if (u.available && u.dismissed) { await post('/api/update/dismiss', {version: ''}); u.dismissed = false; } renderUpdate(u); }
+};
+
 // ---------- native app window extras ----------
 function onNative() {
   document.body.classList.add('native');
@@ -1356,6 +1401,7 @@ async function refresh() {
     if (tab === 'races' && (n % 3 === 0 || !$('#race-cards').innerHTML)) await refreshRaces();
     if (tab === 'sky' && (n % 4 === 0 || !$('#classes').innerHTML)) await refreshSky();
     if (n % 4 === 0 || tab === 'settings') await refreshSettings();
+    if (n % 30 === 0) await refreshUpdate();
   } catch (e) { $('#status-dot').classList.remove('ok'); $('#status-dot').title = 'app not reachable'; }
 }
 refresh();

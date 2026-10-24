@@ -26,6 +26,7 @@
   <div class="who"><span id="status-dot"></span><select id="charsel"></select></div>
 </header>
 
+<div id="update-banner" class="update-banner" hidden></div>
 <main>
   <!-- PARSER -->
   <section id="tab-parser" class="tab on">
@@ -278,6 +279,10 @@
       <p class="hint">Needed to send runs to the leaderboard. Each character (and server) has its own. If you change loadout,
         pick them again, or type <code>/who</code> on yourself in game: a newer <code>/who</code> that lists all three classes wins.
         To fix one run (or a group member's classes), open the run on the Crawls tab and use <b>Edit</b>.</p>
+      <h3>Updates</h3>
+      <label class="chk"><input id="s-check_updates" type="checkbox"> Check for new versions of EQL Assistant
+        <span class="muted">(asks GitHub when the app starts and every 6 hours)</span></label>
+      <div class="btns"><button class="ghost" id="update-check" type="button">Check now</button><span class="muted" id="update-status"></span></div>
       <button id="save" class="primary">Save</button> <span id="saved" class="muted"></span>
       <p class="hint" id="data-dir"></p>
       <hr>

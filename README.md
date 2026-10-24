@@ -188,6 +188,10 @@ Each submission carries:
 
 **Loadouts change classes**, so each `/who` is kept with its time and a run uses the `/who` nearest to it. In Settings, each character has its own three classes; a newer `/who` that lists three different classes replaces them, and a newer `/who` showing a class that isn't in them shows a warning. To correct one run, open it on the Crawls tab and use **Edit** next to any player, including you. `/who` lines the app couldn't read are listed in Settings so they can be reported.
 
+## Updates
+
+EQL Assistant checks GitHub for a newer version when it starts and every 6 hours. When there is one, a banner at the top says so, with **Download** (opens the new `EQLAssistant.exe` in your web browser), **What's new** and **Not now** (hides it until the next version). Nothing is installed by itself: quit the app, then run the new `EQLAssistant.exe` in place of the old one. Your settings and data are kept. Turn the check off, or check right away, in **Settings → Updates**.
+
 ## Death recap
 
 The **Deaths** tab keeps a recap of every death (the last 100 per character). A badge on the tab shows new deaths since you last looked.

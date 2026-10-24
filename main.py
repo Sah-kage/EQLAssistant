@@ -63,6 +63,7 @@ def main():
     print("=" * 60)
 
     app.start()
+    app.updates.start()                    # looks for a newer version on GitHub
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     if not a.no_overlay:
         if app.cfg.get("overlay_on_start", True):
