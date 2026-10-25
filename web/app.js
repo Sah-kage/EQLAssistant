@@ -1378,6 +1378,8 @@ function renderUpdate(u) {
   updateInfo = u;
   const b = $('#update-banner');
   if ($('#update-status')) $('#update-status').textContent = updateStatusText(u);
+  const dl = $('#update-download');         // next to "Check now" in Settings, even after "Not now"
+  if (dl) { dl.hidden = !(u && u.available); if (u && u.available) dl.textContent = `Download ${u.latest}`; }
   if (!u || !u.available || u.dismissed) { b.hidden = true; return; }
   b.hidden = false;
   b.innerHTML = `<span><b>EQL Assistant ${esc(u.latest)} is available</b> — you have ${esc(u.current)}.</span>
@@ -1404,6 +1406,7 @@ async function downloadUpdate() {
     <div class="modal-btns"><button class="primary" onclick="closeModal()">OK</button></div>`);
 }
 async function refreshUpdate() { const u = await get('/api/update'); if (u) renderUpdate(u); }
+$('#update-download').onclick = () => downloadUpdate();
 $('#update-check').onclick = async () => {
   $('#update-status').textContent = 'Checking…';
   const u = await post('/api/update/check', {});
