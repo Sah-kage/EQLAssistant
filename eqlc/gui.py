@@ -150,11 +150,14 @@ def run(app, url, on_close=None):
             webview.start(gui=gui_name, private_mode=False, storage_path=storage)
         if not shown["ok"]:
             log("app window closed without ever showing; falling back to the web browser")
+            app.window_error = ("The app window closed before it ever showed. This usually means the Microsoft Edge "
+                                "WebView2 Runtime is missing or broken.")
             return False
         return True
     except Exception as e:  # e.g. WebView2 runtime missing
         import traceback
-        log("app window failed: " + traceback.format_exc())
+        app.window_error = traceback.format_exc()
+        log("app window failed: " + app.window_error)
         app.status = f"app window failed ({e}); using browser"
         return False
     finally:

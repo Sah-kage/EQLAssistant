@@ -461,3 +461,6 @@ table.ex tr.notmine td { opacity:.55; }
 .kind.k-focus { color:#9ad7ff; } .kind.k-click { color:var(--gold); } .kind.k-worn { color:var(--green); } .kind.k-proc { color:#f0776c; }
 #ex-search { min-width:220px; }
 table.ex a { color:var(--sky); text-decoration:none; } table.ex a:hover { text-decoration:underline; }
+ul.crashes { margin:4px 0 8px 18px; padding:0; font-size:13px; }
+ul.crashes a { color:var(--sky); }
+pre.crash { white-space:pre-wrap; max-height:60vh; overflow:auto; background:var(--panel2); border-radius:8px; padding:10px 12px; font-size:12px; }

@@ -20,6 +20,9 @@ import time
 from collections import deque
 
 from .parser import MELEE_RE
+from .logs import get as _get_log
+
+LOG = _get_log("deaths")
 
 WINDOW = 60          # seconds of history kept in a recap
 KEEP = 100           # recaps kept per character
@@ -154,6 +157,7 @@ class DeathRecap:
             "events": [dict(e, ago=round(t - e["t"])) for e in evs][-MAX_EVENTS:],
         }
         lst.append(recap)
+        LOG.debug("death recorded for %s: killed by %s, %s damage in the last %ss", char, killer, total, recap["window"])
         del lst[: max(0, len(lst) - KEEP)]
         self.dirty = True
 

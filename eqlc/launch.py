@@ -37,7 +37,13 @@ def open_overlay_window(url, kind="dps"):
             exe = alt if os.path.exists(alt) else exe
         cmd = [exe, os.path.join(ROOT, "main.py"), "--overlay-only", "--kind", kind, "--url", url]
     flags = 0x08000000 if sys.platform == "win32" else 0   # CREATE_NO_WINDOW
-    _overlay_procs[kind] = subprocess.Popen(cmd, creationflags=flags, close_fds=True)
+    from .logs import LOGGER
+    try:
+        _overlay_procs[kind] = subprocess.Popen(cmd, creationflags=flags, close_fds=True)
+        LOGGER.info("opened the %s overlay window (pid %s)", kind, _overlay_procs[kind].pid)
+    except OSError:
+        LOGGER.exception("couldn't open the %s overlay window: %s", kind, cmd)
+        raise
 
 
 def overlay_running(kind):
@@ -46,27 +52,27 @@ def overlay_running(kind):
 
 
 def close_overlay_window(kind=None):
+    from .logs import LOGGER
     for k, p in list(_overlay_procs.items()):
-        if (kind is None or k == kind) and p.poll() is None:
-            p.terminate()
+        if kind is None or k == kind:
+            code = p.poll()
+            if code is None:
+                p.terminate()
+                LOGGER.debug("closed the %s overlay window", k)
+            elif code not in (0, 1, -15, 15):
+                LOGGER.warning("the %s overlay window had already stopped (exit code %s): see overlay-%s.log",
+                               k, code, k)
 
 
 def log_path():
-    from .core import data_dir
-    return os.path.join(data_dir(), "eqlassistant.log")
+    from .logs import log_path as lp
+    return lp()
 
 
 def log(msg):
-    """Startup / window problems go to EQLAssistant's data folder (the .exe has no console)."""
-    import time as _t
-    try:
-        p = log_path()
-        if os.path.exists(p) and os.path.getsize(p) > 512 * 1024:
-            os.replace(p, p + ".old")
-        with open(p, "a", encoding="utf-8") as fh:
-            fh.write(_t.strftime("%Y-%m-%d %H:%M:%S ") + str(msg).rstrip() + "\n")
-    except Exception:
-        pass
+    """Startup / window problems go to the log file (the .exe has no console). See logs.py."""
+    from .logs import LOGGER
+    LOGGER.info(str(msg).rstrip())
 
 
 def notify(msg, title="EQL Assistant"):

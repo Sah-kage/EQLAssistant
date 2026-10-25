@@ -18,6 +18,9 @@ from .races import Races
 from .deaths import DeathRecap
 from .parser import parse_line
 from .sky import SkyTracker, REWARD_RE as _sky_reward_re, reward_in_line
+from .logs import get as _get_log
+
+LOG = _get_log("core")
 
 DEFAULTS = {
     "log_dir": "",
@@ -41,6 +44,7 @@ DEFAULTS = {
     "raid_reset_weekday": 1,      # 0=Mon .. 6=Sun  (EQL: Tuesday)
     "raid_reset_hour": 8,         # Pacific time    (EQL: 8am)
     "port": 7377,
+    "verbose_logging": True,       # detailed log file (Settings > Logging); crash reports are always written
     "check_updates": True,         # look for a newer EQL Assistant on GitHub (start, then every 6 hours)
     "update_dismissed": "",        # a version the player said "not now" to
     "leaderboard_url": "",        # EQL Crawl Times site that finished crawls are sent to
@@ -177,7 +181,12 @@ class App:
                 if k in DEFAULTS:
                     self.cfg[k] = type(DEFAULTS[k])(v) if not isinstance(DEFAULTS[k], list) else v
             self.save_cfg()
+            LOG.debug("settings saved: %s", sorted(k for k in new if k in DEFAULTS))
+            if "verbose_logging" in new:
+                from .logs import set_verbose
+                set_verbose(bool(new["verbose_logging"]))
             if dir_changed:
+                LOG.info("log folder changed to %s", self.cfg["log_dir"])
                 self.files.clear()
                 self.trackers.clear()
 
@@ -350,9 +359,12 @@ class App:
                 self.crawls.set_classes(r["id"], me, classes)     # different from what was detected: an edit
             body = self.build_submission(r, classes, video)
             url = self.cfg.get("leaderboard_url", "")
+        LOG.info("sending crawl run %s to the leaderboard %s (auto=%s, edited=%s)", run_id, url, auto, body.get("edited"))
         try:
             reply = L.submit(url, body, __version__)
+            LOG.info("leaderboard accepted run %s: %s", run_id, reply.get("message") or reply)
         except ValueError as e:
+            LOG.warning("leaderboard didn't take run %s: %s", run_id, e)
             with self.lock:
                 r["submit_error"] = {"at": time.time(), "msg": str(e), "auto": auto}
                 self.crawls.dirty = True
@@ -428,6 +440,7 @@ class App:
     # -- log reading --------------------------------------------------------
     def _open_file(self, path, char):
         size = os.path.getsize(path)
+        LOG.info("watching %s (%s, %.1f MB)", os.path.basename(path), char, size / 1048576)
         sky_pos = self.state["offsets"].get(path, 0)
         if sky_pos > size:          # file was rotated/truncated
             sky_pos = 0
@@ -604,6 +617,8 @@ class App:
                     del led[: max(0, len(led) - 25000)]
                     self.quests.dirty = True
             n_done = sum(1 for r in found if r["status"] == "done")
+            LOG.info("history scan of %s: %s completed crawls (%s new), %s raid kills (%s new)", name, n_done, added,
+                     len(tmp_r.kills), raids_added)
             self.scan_status = (f"{name}: found {n_done} completed crawl{'s' if n_done != 1 else ''} ({added} new), "
                                 f"{len(tmp_r.kills)} raid boss kill{'s' if len(tmp_r.kills) != 1 else ''} ({raids_added} new)")
         except OSError as e:
@@ -720,6 +735,7 @@ class App:
                 continue
             if self._inv_mtimes.get(p) != mt:
                 self._inv_mtimes[p] = mt
+                LOG.info("reading inventory export %s", os.path.basename(p))
                 with self.lock:
                     self.sky.load_inventory(char, p)
 
@@ -776,16 +792,21 @@ class App:
             self._last_save = time.time()
 
     def run(self):
+        last_err = (None, 0)
         while not self._stop:
             try:
                 self.poll()
                 self.save_state()
-            except Exception as e:      # keep the watcher alive
+            except Exception as e:      # keep the watcher alive, but say what went wrong (once a minute at most)
                 self.status = f"error: {e}"
+                key = repr(e)
+                if key != last_err[0] or time.time() - last_err[1] > 60:
+                    LOG.exception("error while reading the logs (the app keeps going)")
+                    last_err = (key, time.time())
             time.sleep(0.25)
 
     def start(self):
-        th = threading.Thread(target=self.run, daemon=True)
+        th = threading.Thread(target=self.run, daemon=True, name="log-watcher")
         th.start()
         return th
 
@@ -806,4 +827,6 @@ class App:
         except Exception:
             pass
         _t.sleep(0.5)
+        from .logs import session_ended
+        session_ended()
         os._exit(0)

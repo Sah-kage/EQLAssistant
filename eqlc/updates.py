@@ -11,6 +11,10 @@ import threading
 import time
 import urllib.request
 
+from .logs import get as _get_log
+
+LOG = _get_log("updates")
+
 REPO = "Sah-kage/EQLAssistant"
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES = f"https://github.com/{REPO}/releases"
@@ -76,11 +80,13 @@ class Updates:
                                   notes=whats_new(rel.get("body")), published=rel.get("published_at"),
                                   error=None)
         except Exception as e:                       # offline, GitHub down, rate limited...
+            LOG.info("update check failed: %r", e)
             with self._lock:
                 self.state["error"] = f"Couldn't check for updates: {getattr(e, 'reason', e)}"
         finally:
             with self._lock:
                 self.state.update(checking=False, checked=time.time())
+        LOG.debug("update check: latest %s, available %s", self.state.get("latest"), self.state.get("available"))
         return self.view()
 
     def view(self):
@@ -113,4 +119,4 @@ class Updates:
                 if self.cfg.get("check_updates", True):
                     self.check()
                 time.sleep(EVERY)
-        threading.Thread(target=loop, daemon=True).start()
+        threading.Thread(target=loop, daemon=True, name="update-check").start()

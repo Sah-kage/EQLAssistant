@@ -23,6 +23,9 @@ import time
 
 from . import integrity as I
 from .classes import ClassSpotter
+from .logs import get as _get_log
+
+LOG = _get_log("crawls")
 
 from .motes import mote_matches
 
@@ -124,6 +127,8 @@ class Crawls:
              "entered": bool(z.get("inst")) and not z.get("from_available"), "completed_at": None,
              "offered": t, "waiting_kill": True, "proof": I.new_proof(history=self._meta is None)}
         self.runs.append(r)
+        LOG.debug("crawl run %s set up: %s %s (%s)%s", r["id"], z.get("raw") or z.get("zone"), z.get("tier") or "",
+                  char, "" if self._meta else " [from older log lines]")
         if len(self.runs) > MAX_RUNS:
             del self.runs[: len(self.runs) - MAX_RUNS]
         self.active[char] = r["id"]
@@ -435,6 +440,7 @@ class Crawls:
         r["end"] = t
         r["last"] = t
         r["status"] = "done"
+        LOG.debug("crawl run %s finished at the Reward Chest: %ss, %s kills", r["id"], round(t - r["start"]), r["kills"])
         self.active.pop(char, None)
         self.dirty = True
 

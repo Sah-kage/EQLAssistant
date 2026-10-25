@@ -1329,7 +1329,7 @@ async function refreshOverlays(force) {
 $$('[data-goto]').forEach(b => b.onclick = () => document.querySelector(`nav button[data-tab="${b.dataset.goto}"]`).click());
 
 // ---------- settings ----------
-const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names', 'leaderboard_url', 'leaderboard_auto', 'check_updates'];
+const FIELDS = ['log_dir', 'character', 'fight_timeout', 'min_fight_secs', 'avg_fights', 'backfill_mb', 'use_browser', 'include_pets', 'pet_names', 'leaderboard_url', 'leaderboard_auto', 'check_updates', 'verbose_logging'];
 let settingsLoaded = false;
 async function refreshSettings(force) {
   const d = await get('/api/settings?' + q());
@@ -1348,6 +1348,7 @@ async function refreshSettings(force) {
   }
   CLASSES = d.classes || [];
   renderMyClasses(d);
+  refreshLogs();
   $('#data-dir').innerHTML = `EQL Assistant ${esc(d.version || '')} · Saved data: <code>${esc(d.data_dir)}</code>`;
 }
 $('#save').onclick = async () => {
@@ -1384,6 +1385,27 @@ function renderMyClasses(d) {
     if (r && r.ok) setTimeout(() => { settingsLoaded = false; refreshSettings(true); }, 1200);
   });
 }
+
+// ---------- logs ----------
+async function refreshLogs() {
+  const d = await get('/api/logs');
+  if (!d) return;
+  $('#logs-path').innerHTML = `Log file: <code>${esc(d.log)}</code>`;
+  const c = d.crashes || [];
+  $('#crash-list').innerHTML = !c.length ? '<p class="hint">No crash reports. If EQL Assistant ever crashes or fails to start, a report with the full details is saved in the logs folder.</p>'
+    : `<p class="hint">${d.last_crash ? '<span class="red">The last session didn\'t close properly. </span>' : ''}Crash reports (newest first) — send one to the developer if something went wrong:</p>
+       <ul class="crashes">${c.map(n => `<li><a href="#" data-crash="${esc(n)}">${esc(n)}</a></li>`).join('')}</ul>`;
+  $$('[data-crash]').forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const r = await get('/api/logs/crash?name=' + encodeURIComponent(a.dataset.crash));
+    if (!r) return;
+    openModal(`<h2>${esc(r.name)}</h2><pre class="crash">${esc(r.text)}</pre>
+      <div class="modal-btns"><button class="ghost" id="crash-copy">Copy</button><button class="ghost" id="crash-folder">Open the logs folder</button><button class="primary" onclick="closeModal()">Close</button></div>`);
+    $('#crash-copy').onclick = () => navigator.clipboard && navigator.clipboard.writeText(r.text);
+    $('#crash-folder').onclick = () => post('/api/logs/open', {});
+  });
+}
+$('#logs-open').onclick = () => post('/api/logs/open', {});
 
 // ---------- updates ----------
 let updateInfo = null;

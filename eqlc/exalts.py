@@ -22,6 +22,9 @@ import urllib.request
 
 from . import classes_data as CD
 from .inventory import base_name, is_exaltation
+from .logs import get as _get_log
+
+LOG = _get_log("exaltations")
 
 WIKI = "https://eqlwiki.com/"
 SUBSLOT_KIND = {7: "Focus", 8: "Click", 9: "Worn", 10: "Proc"}
@@ -305,8 +308,11 @@ class Exalts:
                     info = fetch_item(n, self.opener)
                     self.error = None
                 except Exception as e:                   # offline, wiki down...
+                    LOG.warning("couldn't read %s on eqlwiki.com: %r", n, e)
                     info = {"failed": True}
                     self.error = f"Couldn't reach eqlwiki.com: {getattr(e, 'reason', e)}"
+                LOG.debug("eqlwiki item %s: %s", n, "not found" if info.get("missing") else
+                          {k: info.get(k) for k in ("slots", "classes", "effects")})
                 info["t"] = time.time()
                 with self._lock:
                     self.cache[k] = info

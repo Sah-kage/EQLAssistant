@@ -298,6 +298,11 @@
       <p class="hint">Needed to send runs to the leaderboard. Each character (and server) has its own. If you change loadout,
         pick them again, or type <code>/who</code> on yourself in game: a newer <code>/who</code> that lists all three classes wins.
         To fix one run (or a group member's classes), open the run on the Crawls tab and use <b>Edit</b>.</p>
+      <h3>Logging</h3>
+      <label class="chk"><input id="s-verbose_logging" type="checkbox"> Detailed (verbose) log file
+        <span class="muted">(crash reports are always written)</span></label>
+      <div class="btns"><button class="ghost" id="logs-open" type="button">Open the logs folder</button><span class="muted small" id="logs-path"></span></div>
+      <div id="crash-list"></div>
       <h3>Updates</h3>
       <label class="chk"><input id="s-check_updates" type="checkbox"> Check for new versions of EQL Assistant
         <span class="muted">(asks GitHub when the app starts and every 6 hours)</span></label>

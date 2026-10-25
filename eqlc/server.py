@@ -7,6 +7,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .launch import WEB, close_overlay_window, open_overlay_window, overlay_running
+from .logs import get as _get_log
+
+LOG = _get_log("server")
 
 
 def make_handler(app):
@@ -48,7 +51,28 @@ def make_handler(app):
             self.end_headers()
             self.wfile.write(body)
 
+        def _safe(self, fn, method):
+            """Any error in a request is logged with its full details instead of vanishing."""
+            try:
+                if method == "POST":
+                    LOG.debug("POST %s", urlparse(self.path).path)
+                return fn()
+            except (BrokenPipeError, ConnectionResetError):
+                LOG.debug("%s %s: the page went away before the answer was sent", method, self.path)
+            except Exception as e:
+                LOG.exception("%s %s failed", method, self.path)
+                try:
+                    self._json({"ok": False, "error": f"Something went wrong: {e} (details are in the log file)"}, 500)
+                except Exception:
+                    pass
+
         def do_GET(self):
+            return self._safe(self._get, "GET")
+
+        def do_POST(self):
+            return self._safe(self._post, "POST")
+
+        def _get(self):
             u = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             p = u.path
@@ -56,6 +80,22 @@ def make_handler(app):
                 return self._static(p)
             if p == "/api/update":
                 return self._json(app.updates.view())
+            if p == "/api/logs":
+                from . import logs
+                return self._json({"dir": logs.log_dir(), "log": logs.log_path(),
+                                   "verbose": bool(app.cfg.get("verbose_logging", True)),
+                                   "crashes": logs.crash_reports()[:20], "last_crash": getattr(app, "last_crash", None)})
+            if p == "/api/logs/crash":
+                import re as _re
+                from . import logs
+                name = q.get("name", "")
+                if not _re.fullmatch(r"crash-[\w-]+\.txt", name):
+                    return self.send_error(404)
+                try:
+                    with open(os.path.join(logs.log_dir(), name), encoding="utf-8", errors="replace") as fh:
+                        return self._json({"name": name, "text": fh.read()[:200000]})
+                except OSError:
+                    return self.send_error(404)
             if p == "/api/crawls/snapshot":
                 from . import snapshot as S
                 with app.lock:
@@ -160,7 +200,7 @@ def make_handler(app):
                                        "data_dir": app.ddir})
             self.send_error(404)
 
-        def do_POST(self):
+        def _post(self):
             u = urlparse(self.path)
             n = int(self.headers.get("Content-Length") or 0)
             try:
@@ -306,6 +346,12 @@ def make_handler(app):
                 app.save_state(force=True)
                 return self._json({"ok": True, "message": reply.get("message") or "Sent to the leaderboard.",
                                    "duplicate": bool(reply.get("duplicate")), "id": reply.get("id")})
+            if p == "/api/logs/open":
+                import sys as _sys
+                from . import logs
+                if _sys.platform == "win32":
+                    os.startfile(logs.log_dir())  # noqa: S606 - the app's own logs folder
+                return self._json({"ok": True, "dir": logs.log_dir()})
             if p.startswith("/api/update/"):
                 if p == "/api/update/check":
                     return self._json(dict(app.updates.check(), ok=True))
