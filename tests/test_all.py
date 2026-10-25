@@ -327,7 +327,8 @@ class EndToEnd(unittest.TestCase):
         from eqlc.factions import Factions
         from eqlc.races import Races, fkey
         from eqlc import races_data
-        self.assertEqual(len(races_data.RACES), 15)
+        self.assertEqual(len(races_data.RACES), 16)
+        by = {r["name"]: r for r in races_data.RACES}
         for r in races_data.RACES:
             self.assertTrue(r["wiki"].startswith("https://eqlwiki.com/"), r["name"])
         self.assertEqual(fkey("The Freeport Militia"), fkey("Freeport Militia"))
@@ -348,12 +349,24 @@ class EndToEnd(unittest.TestCase):
         gm = next(q for q in v["Troll"]["groups"][0]["reqs"] if q["faction"] == "Grobb Merchants")
         self.assertEqual((gm["done"], gm["seen"], gm["net"]), (False, True, 5))
         # Kerran: task steps
-        for s in [s[0] for s in races_data.RACES[11]["unlock"]["task"]["steps"]]:
+        for s in [s[0] for s in by["Kerran"]["unlock"]["task"]["steps"]]:
             races.set_step("A", s, True)
         v = {r["name"]: r for r in races.view("A")["races"]}
         self.assertEqual((v["Kerran"]["unlocked"], v["Kerran"]["how"]), (True, "task done"))
+        self.assertFalse(v["Half Dark Elf"]["unlocked"])                # its own quest line, not the Kerran one
+        # Half Dark Elf: the five Lake Nerius quests
+        self.assertEqual([x["name"] for x in v["Half Dark Elf"]["steps"]],
+                         ["Something Fishy", "Alchemical Solution", "What's going on here?", "Call for Aid",
+                          "Unfortunate News"])
+        self.assertEqual(v["Half Dark Elf"]["task"]["wiki"], "https://eqlwiki.com/Something_Fishy")
+        for s in ["Something Fishy", "Alchemical Solution", "What's going on here?", "Call for Aid"]:
+            races.set_step("A", s, True)
+        v = {r["name"]: r for r in races.view("A")["races"]}
+        self.assertEqual((v["Half Dark Elf"]["unlocked"], v["Half Dark Elf"]["progress"]), (False, [4, 5]))
+        races.set_step("A", "Unfortunate News", True)
+        self.assertTrue({r["name"]: r for r in races.view("A")["races"]}["Half Dark Elf"]["unlocked"])
         races.set_unlocked("A", "Ogre", True)
-        self.assertEqual(races.view("A")["races"][12]["how"], "manual")
+        self.assertEqual({r["name"]: r for r in races.view("A")["races"]}["Ogre"]["how"], "manual")
         with self.assertRaises(ValueError):
             races.set_unlocked("A", "Vah Shir", True)
 

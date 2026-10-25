@@ -275,6 +275,7 @@ The **Races** tab lists all 15 races with their EQLWiki unlock conditions and st
 - **Human** has two routes (Freeport or Qeynos factions). Either one completes it.
 - **Half-Elf** unlocks with Human or Wood Elf.
 - **Kerran** is unlocked by the "Aid the Kerrans of Kerra Isle" task, which has a 12-quest checklist you tick yourself. Accept the task first: quests done before it is accepted don't count.
+- **Half Dark Elf** is unlocked by a five-quest line that starts with Nikko Canti in Lake Nerius: Something Fishy, Alchemical Solution, What's going on here?, Call for Aid and Unfortunate News. Each step says who to see and what to bring; tick them yourself. New races like this one start at level 1.
 - **Unlocked** ticks a race you started as or used a Race Unlock Token on. Unlocks are account-wide, so all your characters share them.
 - **Ways to raise each faction** come from Alanna's Race Unlock Guide on EQLWiki, linked from the tab.
 

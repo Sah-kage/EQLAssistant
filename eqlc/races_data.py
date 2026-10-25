@@ -1,7 +1,8 @@
 """Race unlocks for EverQuest Legends.
 
 Source: EQLWiki only - each race's page on eqlwiki.com ("Unlock Conditions",
-starting city, class choices), the "Aid the Kerrans of Kerra Isle" task page,
+starting city, class choices), the "Aid the Kerrans of Kerra Isle" task page, the Lake Nerius
+quest pages for the Half Dark Elf (Something Fishy ... Unfortunate News),
 and the community "Alanna's Race Unlock Guide" (User:Alanna on EQLWiki) for
 the suggested ways to raise each faction. Checked 12 October 2026.
 
@@ -56,6 +57,31 @@ RACES = [
      "classes": ["Bard", "Druid", "Paladin", "Ranger", "Rogue", "Warrior"],
      "unlock": {"any_race": ["Human", "Wood Elf"]},
      "tip": "Unlocks with Human or Wood Elf."},
+    {"name": "Half Dark Elf", "page": "Unfortunate_News", "city": "The Nektropos Undercroft",
+     "classes": [],
+     "unlock": {"task": {"name": "The Lake Nerius quest line", "page": "Something_Fishy",
+                         "start": "Hail Nikko Canti in Lake Nerius",
+                         "note": "Five quests in a row, tracked in your quest log. The last one, Unfortunate News, "
+                                 "unlocks the race (achievement \"Race Unlock - Half Dark Elves\").",
+                         "steps": [
+                             ("Something Fishy",
+                              "Nikko Canti, Lake Nerius: fish up 3 Fresh Fish, kill 2 large piranha (river south of "
+                              "the lake) and a ghost gill for Defiled Fish Scales"),
+                             ("Alchemical Solution",
+                              "Dorian G`Wyn, Lake Nerius: Imp Blood and lava drake bile (Lavastorm), the Dusty "
+                              "Scroll Case (West Freeport guard house), Ty'Klerr's Encoded Missive (Neriak Foreign "
+                              "Quarter), then fish up a Fetid Lake Muck"),
+                             ("What's going on here?",
+                              "Lake Nerius: talk to Yelayna, Konro Strongfoot, Blergagh, Neuven F`Lok, "
+                              "The Great Zultor and Nikko Canti"),
+                             ("Call for Aid",
+                              "Dorian G`Wyn: take his three letters to Sir Mollin (North Freeport), Pishtian F`Lok "
+                              "(Neriak Commons bank) and Lord Lyfyx of Burwood (Temple of Solusek Ro)"),
+                             ("Unfortunate News",
+                              "Dorian G`Wyn: hand in A Curt Dismissal, Exorbitant Commission and Ordination of Might"),
+                         ]}},
+     "tip": "Newly added races start at level 1. Don't be kill-on-sight in Neriak and Freeport (invisibility, "
+            "Guise of the Deceiver or sneak help). Binding near Dorian G`Wyn saves travel."},
     {"name": "Halfling", "page": "Halfling", "city": "Rivervale",
      "classes": ["Cleric", "Druid", "Paladin", "Ranger", "Rogue", "Warrior"],
      "unlock": {"factions": ["Guardians of the Vale", "Merchants of Rivervale", "Priests of Mischief"]},
