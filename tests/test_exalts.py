@@ -97,14 +97,17 @@ class ExaltTests(unittest.TestCase):
         prim = {(r["name"], r["location"]): r for r in v["sections"][1]["rows"]}
         sf = prim[("SoulFire", "Primary-Slot8")]
         self.assertEqual((sf["classes"], sf["usable"], sf["slot_from"]), (["Paladin"], False, "wiki"))
+        self.assertEqual(sf["effect"], ["Promised Renewal"])
+        self.assertEqual(prim[("Earthshaker", "Primary-Slot10")]["effect"], ["Earthquake"])
         pic = prim[("Lyssa`s Darkwood Piccolo", "Primary-Slot7")]
-        self.assertEqual((pic["usable"], pic["also"]), (True, ["Secondary"]))
+        self.assertEqual((pic["usable"], pic["also"], pic["effect"]), (True, ["Secondary"], ["Wind Instruments: 30%"]))
         sec = {r["name"] for r in v["sections"][2]["rows"]}
         self.assertIn("Lute", sec)                                       # fits Primary and Secondary: listed in both
         lute = [r for r in v["sections"][1]["rows"] if r["name"] == "Lute"][0]
         self.assertEqual(lute["kind"], "Focus")                         # from the item's effect: not installed
         ear = {r["name"]: r for r in v["sections"][0]["rows"]}
-        self.assertEqual(ear["Fishbone Earring"]["classes"], ["ALL"])
+        self.assertEqual((ear["Fishbone Earring"]["classes"], ear["Fishbone Earring"]["effect"]), (["ALL"], ["Enduring Breath"]))
+        self.assertEqual(ear["Thunderforged Earring"]["effect"], [])                   # no page: no effect known
         self.assertEqual(ear["Thunderforged Earring"]["slot_from"], "installed")      # not on the wiki: where it is
         unknown = [s for s in v["sections"] if s["slot"] == "Slot not known yet"][0]
         self.assertIn("Tobrin's Mystical Eyepatch", {r["name"] for r in unknown["rows"]})

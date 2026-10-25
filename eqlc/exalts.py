@@ -266,11 +266,14 @@ class Exalts:
                 eff = info.get("effects") or {}
                 kinds = [k for k in KINDS if eff.get(k)]
                 kind = kinds[0] if len(kinds) == 1 else None
+            eff = info.get("effects") or {}
+            # the effect this exaltation carries: the one of its type, else whatever the item has
+            effect = eff.get(kind) if kind and eff.get(kind) else [e for k in KINDS for e in eff.get(k, [])]
             classes = info.get("classes") or []
             usable = None
             if classes and mine:
                 usable = classes == ["ALL"] or bool(set(classes) & set(mine))
-            out.append(dict(r, slots=slots, slot_from=slot_from, kind=kind, classes=classes, usable=usable,
+            out.append(dict(r, slots=slots, slot_from=slot_from, kind=kind, classes=classes, usable=usable, effect=effect,
                             effects=info.get("effects") or {}, wiki=info.get("url") or (WIKI + r["name"].replace("`", "'").replace(" ", "_")),
                             looked_up=bool(info) and not info.get("failed"), missing=bool(info.get("missing")),
                             busy=self.key(r["name"]) in self.busy))

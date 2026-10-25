@@ -779,13 +779,16 @@ async function refreshExalts() {
     : r.classes[0] === 'ALL' ? '<span class="cls mine">All classes</span>'
     : r.classes.map(c => `<span class="cls${mine.has(c) ? ' mine' : ''}">${esc(c)}</span>`).join(' ');
   const show = r => (!mineOnly || r.usable !== false) && (!looseOnly || !r.installed_in)
-    && (!term || [r.name, r.installed_in || '', r.place, r.kind || '', ...r.classes].join(' ').toLowerCase().includes(term));
+    && (!term || [r.name, r.installed_in || '', r.place, r.kind || '', ...r.classes, ...r.effect].join(' ').toLowerCase().includes(term));
   const sections = d.sections.map(s => ({...s, rows: s.rows.filter(show)})).filter(s => s.rows.length);
-  $('#ex-table').innerHTML = sections.length ? `<table class="ex"><tr><th>Exaltation</th><th>Type</th><th>Installed in</th><th>Where</th><th>Also fits</th><th>Classes that can use it</th></tr>
-    ${sections.map(s => `<tr class="ex-slot"><th colspan="6">${esc(s.slot)} <span class="muted">${s.rows.length}</span></th></tr>
+  $('#ex-table').innerHTML = sections.length ? `<table class="ex"><tr><th>Exaltation</th><th>Type</th><th>Effect</th><th>Installed in</th><th>Where</th><th>Also fits</th><th>Classes that can use it</th></tr>
+    ${sections.map(s => `<tr class="ex-slot"><th colspan="7">${esc(s.slot)} <span class="muted">${s.rows.length}</span></th></tr>
       ${s.rows.map(r => `<tr class="${r.usable === false ? 'notmine' : ''}">
         <td><a href="${esc(r.wiki)}" target="_blank" rel="noopener">${esc(r.name)}</a>${r.slot_from === 'installed' ? ' <span class="muted small" title="EQLWiki didn\'t say; this is the slot of the item it is installed in">(slot from where it\'s installed)</span>' : ''}</td>
         <td>${r.kind ? `<span class="kind k-${r.kind.toLowerCase()}" title="${esc(KIND_TIP[r.kind] || '')}${Object.values(r.effects).flat().length ? ' · ' + esc(Object.values(r.effects).flat().join(', ')) : ''}">${esc(r.kind)}</span>` : '<span class="muted">—</span>'}</td>
+        <td>${r.effect.length ? r.effect.map(e => e.includes(':') ? esc(e)       // instrument modifiers ("Wind Instruments: 30%") have no page
+            : `<a href="https://eqlwiki.com/${encodeURIComponent(e.replace(/ /g, '_'))}" target="_blank" rel="noopener">${esc(e)}</a>`).join('<br>')
+          : (r.looked_up || r.missing ? '<span class="muted">—</span>' : '<span class="muted">…</span>')}</td>
         <td>${r.installed_in ? esc(r.installed_in) : '<span class="muted">not installed</span>'}</td>
         <td>${esc(r.place)}<div class="muted small">${esc(r.installed_loc || r.location)}</div></td>
         <td>${r.also.length ? esc(r.also.join(', ')) : '<span class="muted">—</span>'}</td>
