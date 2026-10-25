@@ -36,7 +36,6 @@ _SLOT_WORD = {"CHARM": "Charm", "EAR": "Ear", "EARS": "Ear", "HEAD": "Head", "FA
               "HAND": "Hands", "PRIMARY": "Primary", "SECONDARY": "Secondary", "FINGER": "Fingers",
               "FINGERS": "Fingers", "CHEST": "Chest", "LEGS": "Legs", "FEET": "Feet", "WAIST": "Waist",
               "AMMO": "Ammo", "POWER": "Power Source", "SOURCE": None}
-_CONTAINER = re.compile(r"^(General \d+|Bank\d+|SharedBank\d+|Cursor)$", re.I)
 _SUB = re.compile(r"^(?P<parent>.+)-Slot(?P<n>\d+)$")
 _CLASS_ABBR = {"WAR": "Warrior", "CLR": "Cleric", "PAL": "Paladin", "RNG": "Ranger", "SHD": "Shadow Knight",
                "SK": "Shadow Knight", "DRU": "Druid", "MNK": "Monk", "BRD": "Bard", "ROG": "Rogue", "SHM": "Shaman",
@@ -51,10 +50,9 @@ def worn_slot(location):
     return top if top in SLOTS else None
 
 
-def exaltations(text):
-    """[{name, id, location, place, installed_in, installed_loc, kind}] from an inventory export."""
-    items = {}                          # location -> item name (to find what an exaltation is installed in)
-    rows, section = [], "main"
+def _rows(text):
+    """(section, location, name, id, slots column) for every non-blank row of an export."""
+    section = "main"
     for raw in text.splitlines():
         parts = raw.rstrip("\r\n").split("\t")
         if len(parts) < 2 or not parts[0].strip():
@@ -63,30 +61,78 @@ def exaltations(text):
         if name == "Name" and head in ("Location", "KeyRing"):
             section = "keyring" if head == "KeyRing" else "main"
             continue
-        if not name or name == "Empty":
+        yield (section, head, name, parts[2].strip() if len(parts) > 2 else "",
+               parts[4].strip() if len(parts) > 4 else "")
+
+
+def _bags(rows):
+    """Locations that hold a bag (or chest/kit): their sub-slots are bag slots, not exaltation slots.
+    An item only ever has sub-slots 1-2 and 7-10; a bag lists every slot it has (3-6 included),
+    and its Slots column is its size."""
+    bags = set()
+    for section, head, name, _, size in rows:
+        if section != "main":
             continue
-        iid = parts[2].strip() if len(parts) > 2 else ""
+        m = _SUB.match(head)
+        if m and not (1 <= int(m.group("n")) <= 2 or int(m.group("n")) in SUBSLOT_KIND):
+            bags.add(m.group("parent"))
+        if size and size not in ("0", "10") and name != "Empty" and not is_exaltation(name):
+            bags.add(head)
+    return bags
+
+
+def parse_export(text):
+    """{"exalts": [...], "items": [...]} from an inventory export.
+
+    exalts: every exaltation - {name, id, location, place, installed_in, installed_loc, kind}
+    items:  every item (worn, in bags, bank or shared bank) with an exaltation installed -
+            {name, location, place, slots: {Focus/Click/Worn/Proc: exaltation name, "" = empty, None = locked}}
+            (the export lists only the exaltation slots an item has unlocked)"""
+    rows = list(_rows(text))
+    bags = _bags(rows)
+    current = {}                        # location -> the item there (the latest one: "Ear"/"Fingers" come twice)
+    items, exalts = [], []
+    for section, head, name, iid, _ in rows:
         if section == "keyring":
             if is_exaltation(name):
-                rows.append({"name": base_name(name), "id": iid, "location": f"Key ring ({head})",
-                             "place": "Key ring", "installed_in": None, "installed_loc": None,
-                             "kind": "Click" if head.lower() == "activated" else None})
+                exalts.append({"name": base_name(name), "id": iid, "location": f"Key ring ({head})",
+                               "place": "Key ring", "installed_in": None, "installed_loc": None,
+                               "kind": "Click" if head.lower() == "activated" else None})
+            continue
+        m = _SUB.match(head)
+        parent = m.group("parent") if m else None
+        n = int(m.group("n")) if m else None
+        in_item = parent is not None and parent not in bags and n in SUBSLOT_KIND and parent in current
+        if in_item:                                     # one of an item's exaltation slots (empty or not)
+            it = current[parent]
+            it["slots"][SUBSLOT_KIND[n]] = base_name(name) if is_exaltation(name) else ""
+        if name == "Empty" or not name:
             continue
         if not is_exaltation(name):
-            items[head] = name
+            if head not in bags:
+                it = {"name": name, "location": head, "place": None,
+                      "slots": {"Focus": None, "Click": None, "Worn": None, "Proc": None}}
+                current[head] = it
+                items.append(it)
             continue
         row = {"name": base_name(name), "id": iid, "location": head, "installed_in": None, "installed_loc": None,
                "kind": None}
-        m = _SUB.match(head)
-        if m and not _CONTAINER.match(m.group("parent")) and int(m.group("n")) in SUBSLOT_KIND:
-            row["installed_loc"] = m.group("parent")
-            row["kind"] = SUBSLOT_KIND[int(m.group("n"))]
-            # the item is the row just above its sub-slots ("Ear" and "Fingers" come twice: the latest one)
-            row["installed_in"] = items.get(row["installed_loc"])
-        rows.append(row)
-    for r in rows:
+        if in_item:
+            row.update(installed_loc=parent, kind=SUBSLOT_KIND[n], installed_in=current[parent]["name"])
+        exalts.append(row)
+    for r in exalts:
         r["place"] = r.get("place") or _place(r)
-    return rows
+    with_exalts = []
+    for it in items:
+        if any(v for v in it["slots"].values()):
+            it["place"] = _place({"installed_loc": it["location"], "location": it["location"]})
+            with_exalts.append(it)
+    return {"exalts": exalts, "items": with_exalts}
+
+
+def exaltations(text):
+    """[{name, id, location, place, installed_in, installed_loc, kind}] from an inventory export."""
+    return parse_export(text)["exalts"]
 
 
 def _place(r):
@@ -212,6 +258,24 @@ class Exalts:
         inv = self.sky.char(char).get("inventory") or {}
         return inv.get("exalts"), inv.get("t")
 
+    def items(self, char):
+        """Items (worn, bags, bank, shared bank) with an exaltation installed, and what's in each slot."""
+        inv = self.sky.char(char).get("inventory") or {}
+        out = []
+        for it in inv.get("exalt_items") or []:
+            slots = {}
+            for kind, name in it["slots"].items():
+                if name:
+                    info = self.cache.get(self.key(name)) or {}
+                    eff = info.get("effects") or {}
+                    slots[kind] = {"name": name, "effect": eff.get(kind) or [e for k in KINDS for e in eff.get(k, [])],
+                                   "wiki": info.get("url") or (WIKI + name.replace("`", "'").replace(" ", "_"))}
+                else:
+                    slots[kind] = name                  # "" = empty slot, None = not unlocked
+            out.append(dict(it, slots=slots, free=sum(1 for v in it["slots"].values() if v == "")))
+        order = {"Worn": 0, "Bags": 1, "Bank": 2, "Shared bank": 3}
+        return sorted(out, key=lambda i: (order.get(i["place"], 9), i["location"]))
+
     def lookup(self, names, force=False):
         """Read the items' EQLWiki pages in the background (once each, unless forced)."""
         todo = []
@@ -288,7 +352,7 @@ class Exalts:
         sections = [{"slot": s, "rows": sorted(groups[s], key=lambda r: (r["installed_in"] is None, KINDS.index(r["kind"])
                                                                           if r["kind"] in KINDS else 9, r["name"]))}
                     for s in sorted(groups, key=lambda s: order.index(s) if s in order else 99)]
-        return {"char": char, "inventory": t, "sections": sections, "count": len(out),
+        return {"char": char, "inventory": t, "sections": sections, "count": len(out), "items": self.items(char),
                 "installed": sum(1 for r in out if r["installed_in"]), "my_classes": mine,
                 "pending": sum(1 for r in out if r["busy"] or not (r["looked_up"] or r["missing"])),
                 "error": self.error}

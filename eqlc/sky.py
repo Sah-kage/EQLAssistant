@@ -202,15 +202,17 @@ class SkyTracker:
         """Use an inventory export (read from disk or imported in the app) as the true
         count of what this character holds, and tick every test whose reward they own."""
         from .inventory import parse
-        from .exalts import exaltations
+        from .exalts import parse_export
         inv = parse(text)
+        ex = parse_export(text)
         t = time.time() if t is None else t
         c = self.char(char)
         c["inventory"] = {"t": t, "path": source,
                           "counts": {_k(k): v for k, v in inv["counts"].items()},
                           "owned": sorted({_k(k) for k in inv["owned"]}),
                           "where": {_k(k): v for k, v in inv["where"].items()},
-                          "items": inv["items"], "exalts": exaltations(text)}
+                          "items": inv["items"], "exalts": ex["exalts"],
+                          "exalt_items": ex["items"]}
         ticked = []
         for k in c["inventory"]["owned"]:
             qid = REWARDS.get(k)

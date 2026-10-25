@@ -171,8 +171,8 @@ $('#clear-fights').onclick = async () => {
 $('#hide-done').onchange = () => refreshSky();
 $('#q-filter').value = localStorageGet('eqlc-qfilter') || 'all';
 $('#q-filter').onchange = () => { localStorageSet('eqlc-qfilter', $('#q-filter').value); refreshSky(); };
-$$('.seg button').forEach(b => b.onclick = () => {
-  skySrc = b.dataset.src; $$('.seg button').forEach(x => x.classList.toggle('on', x === b)); refreshSky();
+$$('.seg button[data-src]').forEach(b => b.onclick = () => {
+  skySrc = b.dataset.src; $$('.seg button[data-src]').forEach(x => x.classList.toggle('on', x === b)); refreshSky();
 });
 
 let skyBusy = false;
@@ -758,6 +758,7 @@ $('#rescan-crawls').onclick = async () => {
 };
 
 // ---------- exaltations ----------
+let exView = localStorageGet('eqlc-exview') || 'slots';
 const KIND_TIP = {Focus: 'Focus slot (item level +1)', Click: 'Click slot (+2)', Worn: 'Worn slot (+3)', Proc: 'Proc slot (+4)'};
 async function refreshExalts() {
   const d = await get('/api/exalts?' + q());
@@ -780,6 +781,23 @@ async function refreshExalts() {
     : r.classes.map(c => `<span class="cls${mine.has(c) ? ' mine' : ''}">${esc(c)}</span>`).join(' ');
   const show = r => (!mineOnly || r.usable !== false) && (!looseOnly || !r.installed_in)
     && (!term || [r.name, r.installed_in || '', r.place, r.kind || '', ...r.classes, ...r.effect].join(' ').toLowerCase().includes(term));
+  $$('#ex-view button').forEach(b => b.classList.toggle('on', b.dataset.exview === exView));
+  $('#ex-items-n').textContent = d.items.length ? `(${d.items.length})` : '';
+  if (exView === 'items') {
+    const effLine = s => s.effect && s.effect.length ? `<div class="muted small">${esc(s.effect.join(', '))}</div>` : '';
+    const cell = s => s === null ? '<span class="muted" title="Not unlocked on this item yet (upgrade it)">—</span>'
+      : s === '' ? '<span class="muted">empty</span>'
+      : `<a href="${esc(s.wiki)}" target="_blank" rel="noopener">${esc(s.name)}</a>${effLine(s)}`;
+    const items = d.items.filter(i => !term || [i.name, i.place, i.location, ...Object.values(i.slots).filter(Boolean)
+      .flatMap(s => [s.name, ...s.effect])].join(' ').toLowerCase().includes(term));
+    $('#ex-table').innerHTML = items.length ? `<table class="ex"><tr><th>Item</th><th>Where</th><th>Focus</th><th>Click</th><th>Worn</th><th>Proc</th><th>Free slots</th></tr>
+      ${items.map(i => `<tr><td>${esc(i.name)}</td><td>${esc(i.place)}<div class="muted small">${esc(i.location)}</div></td>
+        ${['Focus', 'Click', 'Worn', 'Proc'].map(k => `<td>${cell(i.slots[k])}</td>`).join('')}
+        <td>${i.free ? `<b>${i.free}</b>` : '<span class="muted">0</span>'}</td></tr>`).join('')}</table>`
+      : '<div class="muted" style="padding:8px 0">No items with an exaltation installed' + (term ? ' match.' : ' in this export.') + '</div>';
+    if (d.pending) setTimeout(() => { if (tab === 'exalts') refreshExalts(); }, 2500);
+    return;
+  }
   const sections = d.sections.map(s => ({...s, rows: s.rows.filter(show)})).filter(s => s.rows.length);
   $('#ex-table').innerHTML = sections.length ? `<table class="ex"><tr><th>Exaltation</th><th>Type</th><th>Effect</th><th>Installed in</th><th>Where</th><th>Also fits</th><th>Classes that can use it</th></tr>
     ${sections.map(s => `<tr class="ex-slot"><th colspan="7">${esc(s.slot)} <span class="muted">${s.rows.length}</span></th></tr>
@@ -796,6 +814,7 @@ async function refreshExalts() {
     : '<div class="muted" style="padding:8px 0">No exaltations match.</div>';
   if (d.pending) setTimeout(() => { if (tab === 'exalts') refreshExalts(); }, 2500);
 }
+$$('#ex-view button').forEach(b => b.onclick = () => { exView = b.dataset.exview; localStorageSet('eqlc-exview', exView); refreshExalts(); });
 $('#ex-search').oninput = $('#ex-mine').onchange = $('#ex-loose').onchange = () => refreshExalts();
 $('#ex-refresh').onclick = async () => { await post('/api/exalts/refresh', {char}); refreshExalts(); };
 

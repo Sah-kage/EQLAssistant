@@ -71,6 +71,38 @@ class ExaltTests(unittest.TestCase):
         self.assertEqual(rows[("Lute", "Key ring (Augmentation)")]["place"], "Key ring")
         self.assertEqual(rows[("Dark Cloak of the Sky", "Key ring (Activated)")]["kind"], "Click")
 
+    def test_items_with_exaltations(self):
+        extra = EXPORT.replace("\n\nKeyRing", "\n" + "\n".join("\t".join(r) for r in [
+            ("Bank7", "Dove Slippers +4", "20798", "1", "10"),            # an item straight in a bank slot
+            ("Bank7-Slot7", "Empty", "0", "0", "0"),
+            ("Bank7-Slot8", "Empty", "0", "0", "0"),
+            ("Bank7-Slot9", "Fishbone Earring (Exaltation)", "10313", "1", "10"),
+            ("Bank9", "Storage Trunk", "177752", "1", "50"),             # a bank chest: its slots hold items
+            ("Bank9-Slot7", "Moonstone Ring (Exaltation)", "10150", "1", "10"),
+            ("SharedBank2", "Belt of Virtue +3", "1", "1", "10"),
+            ("SharedBank2-Slot7", "Brell's Girdle (Exaltation)", "2742", "1", "10"),
+        ]) + "\n\nKeyRing")
+        d = X.parse_export(extra)
+        ex = {(r["name"], r["location"]): r for r in d["exalts"]}
+        self.assertEqual(ex[("Fishbone Earring", "Bank7-Slot9")]["installed_in"], "Dove Slippers +4")
+        self.assertEqual(ex[("Moonstone Ring", "Bank9-Slot7")]["installed_in"], None)     # loose in the chest
+        self.assertEqual(ex[("Brell's Girdle", "SharedBank2-Slot7")]["place"], "Shared bank")
+        items = {i["name"]: i for i in d["items"]}
+        self.assertEqual(set(items), {"Thunderforged Earring +5", "Ivandyr's Hoop +5", "Aldryn, Blade of the Ocean +9",
+                                      "Hierophant`s Crook +5", "Lyssa`s Darkwood Piccolo +1", "Dove Slippers +4",
+                                      "Belt of Virtue +3"})
+        a = items["Aldryn, Blade of the Ocean +9"]["slots"]
+        self.assertEqual((a["Focus"], a["Click"], a["Worn"], a["Proc"]),
+                         ("Lyssa`s Darkwood Piccolo", "SoulFire", None, "Earthshaker"))
+        self.assertEqual(items["Dove Slippers +4"]["slots"], {"Focus": "", "Click": "", "Worn": "Fishbone Earring", "Proc": None})
+        self.assertEqual((items["Dove Slippers +4"]["place"], items["Belt of Virtue +3"]["place"]), ("Bank", "Shared bank"))
+        sky = SkyTracker({})
+        sky.load_inventory_text("Me_x", extra, 1000)
+        v = X.Exalts({}, sky, lambda c: None, opener).view("Me_x", fetch=False)
+        dove = [i for i in v["items"] if i["name"] == "Dove Slippers +4"][0]
+        self.assertEqual((dove["free"], dove["slots"]["Worn"]["name"]), (2, "Fishbone Earring"))
+        self.assertEqual([i["place"] for i in v["items"]][:1], ["Worn"])                # worn first, then bags, bank
+
     def test_item_pages(self):
         p = X.parse_item(X.html_to_text(PAGES["Lyssa's_Darkwood_Piccolo"]))
         self.assertEqual((p["slots"], p["classes"], list(p["effects"])), (["Primary", "Secondary"], ["Bard"], ["Focus"]))

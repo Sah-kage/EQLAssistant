@@ -263,6 +263,7 @@ The **Exaltations** tab lists every exaltation in your last inventory export (`/
 - **Effect**: what the exaltation carries, from the item's EQLWiki page (e.g. "Promised Renewal", "Extended Range II", "Wind Instruments: 30%"), linked to the effect's page.
 - **Installed in**: the item it's in (worn, or in your bags or bank), or *not installed* when it's loose in a bag or kept on your key ring.
 - **Slot** and **classes that can use it**: an exaltation keeps the slot and class limits of the item it came from (EQLWiki), so the app reads that item's page on eqlwiki.com once ("Slot: FINGER", "Class: WAR PAL SHD") and remembers it. Ones that fit several slots are listed under each. Your own classes are highlighted, and ones none of your classes can use are faded.
+- **Items with exaltations installed** (the second view): every item that has one, wherever it is (worn, bags, bank, shared bank), with what's in its Focus, Click, Worn and Proc slots and each one's effect. *empty* is an unlocked slot with nothing in it, *—* a slot the item hasn't unlocked yet (upgrade it), and **Free slots** counts the empty ones.
 - Filters: search, only ones your classes can use, only ones not installed. **Re-check EQLWiki** reads the pages again.
 
 ## Race unlocks
