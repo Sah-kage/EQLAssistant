@@ -79,6 +79,7 @@ class ExaltTests(unittest.TestCase):
             ("Bank7-Slot9", "Fishbone Earring (Exaltation)", "10313", "1", "10"),
             ("Bank9", "Storage Trunk", "177752", "1", "50"),             # a bank chest: its slots hold items
             ("Bank9-Slot7", "Moonstone Ring (Exaltation)", "10150", "1", "10"),
+            ("Bank9-Slot11", "Empty", "0", "0", "0"),                        # chests list every slot
             ("SharedBank2", "Belt of Virtue +3", "1", "1", "10"),
             ("SharedBank2-Slot7", "Brell's Girdle (Exaltation)", "2742", "1", "10"),
         ]) + "\n\nKeyRing")
@@ -102,6 +103,44 @@ class ExaltTests(unittest.TestCase):
         dove = [i for i in v["items"] if i["name"] == "Dove Slippers +4"][0]
         self.assertEqual((dove["free"], dove["slots"]["Worn"]["name"]), (2, "Fishbone Earring"))
         self.assertEqual([i["place"] for i in v["items"]][:1], ["Worn"])                # worn first, then bags, bank
+
+    def test_other_export_layouts(self):
+        """Items listed with sub-slots 3-6 too, and a different Slots column: still items, not bags."""
+        text = "\n".join("\t".join(r) for r in [
+            ("Location", "Name", "ID", "Count", "Slots"),
+            ("Primary", "Aldryn, Blade of the Ocean +9", "27708", "1", "4"),
+            *[(f"Primary-Slot{k}", "Empty", "0", "0", "0") for k in range(1, 7)],
+            ("Primary-Slot8", "SoulFire (Exaltation)", "5504", "1", "0"),
+            ("General 2", "Large Bag", "1", "1", "8"),
+            ("General 2-Slot1", "Bone Chips", "1", "20", "1"),
+            ("General 2-Slot2", "Wand of Ice +3", "9", "1", "4"),
+            *[(f"General 2-Slot2-Slot{k}", "Empty", "0", "0", "0") for k in range(1, 7)],
+            ("General 2-Slot2-Slot7", "Golem Metal Wand (Exaltation)", "14313", "1", "0"),
+            ("General 2-Slot7", "Fishbone Earring (Exaltation)", "10313", "1", "0"),      # loose in the bag
+        ])
+        d = X.parse_export(text)
+        ex = {r["name"]: r for r in d["exalts"]}
+        self.assertEqual(ex["SoulFire"]["installed_in"], "Aldryn, Blade of the Ocean +9")
+        self.assertEqual(ex["Golem Metal Wand"]["installed_in"], "Wand of Ice +3")
+        self.assertIsNone(ex["Fishbone Earring"]["installed_in"])
+        self.assertEqual({i["name"] for i in d["items"]}, {"Aldryn, Blade of the Ocean +9", "Wand of Ice +3"})
+
+    def test_old_saved_export_is_read_again(self):
+        import tempfile
+        from eqlc.core import App
+        tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(tmp, "Logs"))
+        path = os.path.join(tmp, "Me_x-Inventory.txt")
+        with open(path, "w", encoding="cp1252") as fh:
+            fh.write(EXPORT)
+        app = App(log_dir=os.path.join(tmp, "Logs"), ddir=os.path.join(tmp, "data"))
+        app.exalts.opener = opener
+        app.sky.load_inventory("Me_x", path)
+        inv = app.sky.char("Me_x")["inventory"]
+        del inv["exalt_items"], inv["exalt_v"]                      # what 1.8 saved
+        v = app.exalts_view("Me_x")
+        self.assertFalse(v["stale"])
+        self.assertTrue(any(i["name"] == "Aldryn, Blade of the Ocean +9" for i in v["items"]))
 
     def test_item_pages(self):
         p = X.parse_item(X.html_to_text(PAGES["Lyssa's_Darkwood_Piccolo"]))

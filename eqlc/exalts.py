@@ -67,17 +67,23 @@ def _rows(text):
 
 def _bags(rows):
     """Locations that hold a bag (or chest/kit): their sub-slots are bag slots, not exaltation slots.
-    An item only ever has sub-slots 1-2 and 7-10; a bag lists every slot it has (3-6 included),
-    and its Slots column is its size."""
+
+    Decided only by what's inside, never by names or the Slots column (which can change between game
+    versions): a bag has a slot numbered above 10, or holds an ordinary item (not an exaltation).
+    A worn slot (Primary, Ear...) always holds an item."""
     bags = set()
-    for section, head, name, _, size in rows:
+    for section, head, name, _, _size in rows:
         if section != "main":
             continue
         m = _SUB.match(head)
-        if m and not (1 <= int(m.group("n")) <= 2 or int(m.group("n")) in SUBSLOT_KIND):
-            bags.add(m.group("parent"))
-        if size and size not in ("0", "10") and name != "Empty" and not is_exaltation(name):
-            bags.add(head)
+        if not m:
+            continue
+        parent, n = m.group("parent"), int(m.group("n"))
+        if worn_slot(parent) and "-" not in parent:
+            continue
+        ordinary = name and name != "Empty" and not is_exaltation(name) and "ornament" not in name.lower()
+        if n > 10 or ordinary:          # an item's sub-slots only ever hold exaltations (or an ornamentation)
+            bags.add(parent)
     return bags
 
 
@@ -314,6 +320,8 @@ class Exalts:
         rows, t = self.rows(char)
         if rows is None:
             return {"char": char, "inventory": None, "slots": [], "count": 0}
+        inv = self.sky.char(char).get("inventory") or {}
+        stale = inv.get("exalt_v") != 2
         mine = self.my_classes(char) or []
         names = []
         out = []
@@ -353,6 +361,7 @@ class Exalts:
                                                                           if r["kind"] in KINDS else 9, r["name"]))}
                     for s in sorted(groups, key=lambda s: order.index(s) if s in order else 99)]
         return {"char": char, "inventory": t, "sections": sections, "count": len(out), "items": self.items(char),
+                "stale": stale,
                 "installed": sum(1 for r in out if r["installed_in"]), "my_classes": mine,
                 "pending": sum(1 for r in out if r["busy"] or not (r["looked_up"] or r["missing"])),
                 "error": self.error}

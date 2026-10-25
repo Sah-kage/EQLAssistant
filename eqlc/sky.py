@@ -100,6 +100,9 @@ def _blank():
     return {"loot": [], "done": {}, "unlocked": [], "inventory": None}
 
 
+EXALT_V = 2          # version of the exaltation reading; older saved exports are read again
+
+
 class SkyTracker:
     """State lives in a plain dict so it can be saved to JSON."""
 
@@ -212,7 +215,7 @@ class SkyTracker:
                           "owned": sorted({_k(k) for k in inv["owned"]}),
                           "where": {_k(k): v for k, v in inv["where"].items()},
                           "items": inv["items"], "exalts": ex["exalts"],
-                          "exalt_items": ex["items"]}
+                          "exalt_items": ex["items"], "exalt_v": EXALT_V}
         ticked = []
         for k in c["inventory"]["owned"]:
             qid = REWARDS.get(k)

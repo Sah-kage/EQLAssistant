@@ -775,7 +775,8 @@ async function refreshExalts() {
   $('#ex-sum').textContent = `${d.count} exaltation${d.count === 1 ? '' : 's'} · ${d.installed} installed · inventory from ${dt(d.inventory)}`;
   $('#ex-status').innerHTML = (d.pending ? `Looking up ${d.pending} item${d.pending === 1 ? '' : 's'} on EQLWiki… ` : '')
     + (d.error ? `<span class="red">${esc(d.error)}</span>` : '')
-    + (!mine.size ? ' Pick your classes in Settings to see which ones you can use.' : '');
+    + (!mine.size ? ' Pick your classes in Settings to see which ones you can use.' : '')
+    + (d.stale ? ' <span class="red">This inventory was read by an older version: import it again (Import inventory…) to see which items have exaltations installed.</span>' : '');
   const classCell = r => !r.classes.length ? (r.looked_up || r.missing ? '<span class="muted">not on EQLWiki</span>' : '<span class="muted">…</span>')
     : r.classes[0] === 'ALL' ? '<span class="cls mine">All classes</span>'
     : r.classes.map(c => `<span class="cls${mine.has(c) ? ' mine' : ''}">${esc(c)}</span>`).join(' ');

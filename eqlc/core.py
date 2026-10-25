@@ -405,6 +405,14 @@ class App:
                     self._submitting.discard(rid)
             threading.Thread(target=go, daemon=True).start()
 
+    def exalts_view(self, char):
+        """The Exaltations tab. An export read by an older version is read again from its file."""
+        from .sky import EXALT_V
+        inv = self.sky.char(char).get("inventory") or {}
+        if inv and inv.get("exalt_v") != EXALT_V and inv.get("path") and os.path.isfile(inv["path"]):
+            self.sky.load_inventory(char, inv["path"])
+        return self.exalts.view(char)
+
     def tracker(self, char):
         t = self.trackers.get(char)
         if t is None:

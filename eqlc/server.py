@@ -109,7 +109,7 @@ def make_handler(app):
                 if p == "/api/factions":
                     return self._json(app.factions.view(char) if char else {"char": None})
                 if p == "/api/exalts":
-                    return self._json(app.exalts.view(char) if char else {"char": None})
+                    return self._json(app.exalts_view(char) if char else {"char": None})
                 if p == "/api/deaths":
                     if not char:
                         return self._json({"char": None})
