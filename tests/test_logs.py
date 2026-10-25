@@ -70,6 +70,16 @@ class CrashReportTests(unittest.TestCase):
             sys.excepthook = sys.__excepthook__
 
 
+def busy_port():
+    """A port another program is listening on (exclusively, so Windows refuses it to anyone else)."""
+    s = socket.socket()
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    s.bind(("127.0.0.1", 0))
+    s.listen(1)
+    return s
+
+
 class StartupTests(unittest.TestCase):
     """Runs main.py for real, with its data in a temporary folder."""
     def run_main(self, cfg, *args):
@@ -79,7 +89,7 @@ class StartupTests(unittest.TestCase):
         os.makedirs(d)
         with open(os.path.join(d, "config.json"), "w") as fh:
             json.dump(cfg, fh)
-        env = dict(os.environ, APPDATA=tmp)
+        env = dict(os.environ, APPDATA=tmp, EQLA_NO_DIALOGS="1")
         p = subprocess.run([sys.executable, os.path.join(ROOT, "main.py"), "--browser", "--no-overlay", *args],
                            env=env, capture_output=True, text=True, timeout=60, cwd=tmp)
         logdir = os.path.join(d, "logs")
@@ -87,9 +97,7 @@ class StartupTests(unittest.TestCase):
         return p, logdir, [open(os.path.join(logdir, r), encoding="utf-8").read() for r in reps]
 
     def test_port_in_use(self):
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        s.listen(1)
+        s = busy_port()
         self.addCleanup(s.close)
         port = s.getsockname()[1]
         p, logdir, reps = self.run_main({"port": port, "log_dir": ""})
@@ -111,9 +119,7 @@ class StartupTests(unittest.TestCase):
         self.assertIn("crash report with the full details", p.stdout)   # the message box text
 
     def test_quiet_logging(self):
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        s.listen(1)
+        s = busy_port()
         self.addCleanup(s.close)
         p, logdir, reps = self.run_main({"port": s.getsockname()[1], "verbose_logging": False})
         log = open(os.path.join(logdir, "eqlassistant.log"), encoding="utf-8").read()

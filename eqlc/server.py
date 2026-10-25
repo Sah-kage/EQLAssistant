@@ -2,6 +2,8 @@
 import json
 import mimetypes
 import os
+import socket
+import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -484,7 +486,21 @@ def make_handler(app):
     return H
 
 
+class _Server(ThreadingHTTPServer):
+    # Windows lets a second program bind a port that's in use when SO_REUSEADDR is set, so a second
+    # EQL Assistant (or another program) on the same port would go unnoticed. Insist on the port alone.
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+    def handle_error(self, request, client_address):
+        LOG.exception("dashboard request from %s failed", client_address)
+
+
 def serve(app, host="127.0.0.1"):
-    srv = ThreadingHTTPServer((host, int(app.cfg["port"])), make_handler(app))
+    srv = _Server((host, int(app.cfg["port"])), make_handler(app))
     srv.daemon_threads = True
     return srv

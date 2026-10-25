@@ -77,7 +77,9 @@ def log(msg):
 
 def notify(msg, title="EQL Assistant"):
     """Show a message even when there is no console window (windowed .exe)."""
-    if sys.platform == "win32":
+    from .logs import LOGGER
+    LOGGER.info("message shown: %s", msg.replace("\n", " "))
+    if sys.platform == "win32" and not os.environ.get("EQLA_NO_DIALOGS"):     # (tests run without dialogs)
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, msg, title, 0x40)
