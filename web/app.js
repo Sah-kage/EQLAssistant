@@ -757,6 +757,45 @@ $('#rescan-crawls').onclick = async () => {
   }, 800);
 };
 
+// ---------- exaltations ----------
+const KIND_TIP = {Focus: 'Focus slot (item level +1)', Click: 'Click slot (+2)', Worn: 'Worn slot (+3)', Proc: 'Proc slot (+4)'};
+async function refreshExalts() {
+  const d = await get('/api/exalts?' + q());
+  if (!d || !d.char) { $('#ex-table').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
+  if (!d.inventory) {
+    $('#ex-sum').textContent = '';
+    $('#ex-status').textContent = '';
+    $('#ex-table').innerHTML = `<div class="empty">No inventory export for ${esc(charLabel(d.char))} yet. In game type <code>/outputfile inventory</code>
+      (the app picks it up by itself), or use Import inventory….</div>`;
+    return;
+  }
+  const term = $('#ex-search').value.trim().toLowerCase(), mineOnly = $('#ex-mine').checked, looseOnly = $('#ex-loose').checked;
+  const mine = new Set(d.my_classes || []);
+  $('#ex-sum').textContent = `${d.count} exaltation${d.count === 1 ? '' : 's'} · ${d.installed} installed · inventory from ${dt(d.inventory)}`;
+  $('#ex-status').innerHTML = (d.pending ? `Looking up ${d.pending} item${d.pending === 1 ? '' : 's'} on EQLWiki… ` : '')
+    + (d.error ? `<span class="red">${esc(d.error)}</span>` : '')
+    + (!mine.size ? ' Pick your classes in Settings to see which ones you can use.' : '');
+  const classCell = r => !r.classes.length ? (r.looked_up || r.missing ? '<span class="muted">not on EQLWiki</span>' : '<span class="muted">…</span>')
+    : r.classes[0] === 'ALL' ? '<span class="cls mine">All classes</span>'
+    : r.classes.map(c => `<span class="cls${mine.has(c) ? ' mine' : ''}">${esc(c)}</span>`).join(' ');
+  const show = r => (!mineOnly || r.usable !== false) && (!looseOnly || !r.installed_in)
+    && (!term || [r.name, r.installed_in || '', r.place, r.kind || '', ...r.classes].join(' ').toLowerCase().includes(term));
+  const sections = d.sections.map(s => ({...s, rows: s.rows.filter(show)})).filter(s => s.rows.length);
+  $('#ex-table').innerHTML = sections.length ? `<table class="ex"><tr><th>Exaltation</th><th>Type</th><th>Installed in</th><th>Where</th><th>Also fits</th><th>Classes that can use it</th></tr>
+    ${sections.map(s => `<tr class="ex-slot"><th colspan="6">${esc(s.slot)} <span class="muted">${s.rows.length}</span></th></tr>
+      ${s.rows.map(r => `<tr class="${r.usable === false ? 'notmine' : ''}">
+        <td><a href="${esc(r.wiki)}" target="_blank" rel="noopener">${esc(r.name)}</a>${r.slot_from === 'installed' ? ' <span class="muted small" title="EQLWiki didn\'t say; this is the slot of the item it is installed in">(slot from where it\'s installed)</span>' : ''}</td>
+        <td>${r.kind ? `<span class="kind k-${r.kind.toLowerCase()}" title="${esc(KIND_TIP[r.kind] || '')}${Object.values(r.effects).flat().length ? ' · ' + esc(Object.values(r.effects).flat().join(', ')) : ''}">${esc(r.kind)}</span>` : '<span class="muted">—</span>'}</td>
+        <td>${r.installed_in ? esc(r.installed_in) : '<span class="muted">not installed</span>'}</td>
+        <td>${esc(r.place)}<div class="muted small">${esc(r.installed_loc || r.location)}</div></td>
+        <td>${r.also.length ? esc(r.also.join(', ')) : '<span class="muted">—</span>'}</td>
+        <td>${classCell(r)}${r.usable === false ? ' <span class="muted small">not your classes</span>' : ''}</td></tr>`).join('')}`).join('')}</table>`
+    : '<div class="muted" style="padding:8px 0">No exaltations match.</div>';
+  if (d.pending) setTimeout(() => { if (tab === 'exalts') refreshExalts(); }, 2500);
+}
+$('#ex-search').oninput = $('#ex-mine').onchange = $('#ex-loose').onchange = () => refreshExalts();
+$('#ex-refresh').onclick = async () => { await post('/api/exalts/refresh', {char}); refreshExalts(); };
+
 // ---------- death recap ----------
 let deathSel = null;
 const deathSeen = () => +(localStorageGet('eqlc-death-seen-' + (char || 'active')) || 0);
@@ -1393,6 +1432,7 @@ async function refresh() {
     if (tab === 'timers') await refreshTimers();
     if (tab === 'overlays') await refreshOverlays();
     if (tab === 'crawls') await refreshCrawls();
+    if (tab === 'exalts' && (n % 10 === 0 || !$('#ex-table').innerHTML)) await refreshExalts();
     if (tab === 'deaths' && (n % 2 === 0 || !$('#death-list').innerHTML)) await refreshDeaths();
     else if (n % 4 === 0) await refreshDeaths(true);
     if (tab === 'raids' && (n % 2 === 0 || !$('#raid-groups').innerHTML)) await refreshRaids();

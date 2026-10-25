@@ -148,6 +148,8 @@ class App:
         self.quests = Quests(self.state, self.sky)
         self.races = Races(self.state, self.factions)
         self.deaths = DeathRecap(self.state)
+        from .exalts import Exalts
+        self.exalts = Exalts(self.state, self.sky, lambda char: self.my_classes(char))
         from .updates import Updates
         self.updates = Updates(self.cfg, self.save_cfg)
         self.zone_info = {}
@@ -751,7 +753,8 @@ class App:
     def save_state(self, force=False):
         self.timers.prune()
         dirty = (self.sky.dirty or self.motes.dirty or self.timers.dirty or self.crawls.dirty or
-                 self.factions.dirty or self.raids.dirty or self.quests.dirty or self.races.dirty or self.deaths.dirty)
+                 self.factions.dirty or self.raids.dirty or self.quests.dirty or self.races.dirty or self.deaths.dirty
+                 or self.exalts.dirty)
         if force or (dirty and time.time() - self._last_save > 5):
             with self.lock:
                 _save(self.state_path, self.state)
@@ -761,6 +764,7 @@ class App:
                 self.crawls.dirty = False
                 self.factions.dirty = self.raids.dirty = self.quests.dirty = self.races.dirty = False
                 self.deaths.dirty = False
+                self.exalts.dirty = False
             self._last_save = time.time()
 
     def run(self):

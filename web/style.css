@@ -451,3 +451,13 @@ table.mycls .small, .small { font-size:11px; }
 .update-banner b { color:var(--gold); }
 #modal .notes { white-space:pre-wrap; max-height:50vh; overflow:auto; background:var(--panel2); border-radius:8px; padding:10px 12px; font-size:13px; }
 .update-banner[hidden] { display:none; }
+
+/* exaltations */
+table.ex td, table.ex th { text-align:left; vertical-align:top; }
+table.ex tr.ex-slot th { background:var(--panel2); color:var(--fg); font-size:13px; padding-top:10px; }
+table.ex tr.notmine td { opacity:.55; }
+.cls.mine { background:#3fb95026; color:var(--green); }
+.kind { font-size:11px; font-weight:600; padding:1px 7px; border-radius:9px; background:#ffffff10; }
+.kind.k-focus { color:#9ad7ff; } .kind.k-click { color:var(--gold); } .kind.k-worn { color:var(--green); } .kind.k-proc { color:#f0776c; }
+#ex-search { min-width:220px; }
+table.ex a { color:var(--sky); text-decoration:none; } table.ex a:hover { text-decoration:underline; }

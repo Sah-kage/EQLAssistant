@@ -18,6 +18,7 @@
     <button data-tab="timers">Timers <span id="timer-badge" class="nbadge" hidden></span></button>
     <button data-tab="quests">Class Quests</button>
     <button data-tab="sky">Plane of Sky</button>
+    <button data-tab="exalts">Exaltations</button>
     <button data-tab="factions">Factions</button>
     <button data-tab="races">Races</button>
     <button data-tab="overlays">Overlays</button>
@@ -141,6 +142,23 @@
     </div>
     <p class="hint">A recap covers the last minute before each death: every hit, miss, spell and damage-over-time tick on you, heals you got,
       spells you resisted and stuns. The log has no hit point numbers, so it shows damage and heals rather than your health bar.</p>
+  </section>
+
+  <section id="tab-exalts" class="tab">
+    <div class="panel">
+      <div class="panel-h"><span>Exaltations <span class="muted" id="ex-sum"></span></span>
+        <span class="filters"><input id="ex-search" type="search" placeholder="Search name, item or class…">
+          <label><input type="checkbox" id="ex-mine"> Only ones my classes can use</label>
+          <label><input type="checkbox" id="ex-loose"> Only ones not installed</label>
+          <button class="ghost" data-inv-import title="Load a Name_server-Inventory.txt made with /outputfile inventory">Import inventory…</button>
+          <button class="ghost tiny" id="ex-refresh" title="Read the items' pages on eqlwiki.com again">Re-check EQLWiki</button></span></div>
+      <p class="hint" style="margin:0 0 8px">Every exaltation in your last inventory export (<code>/outputfile inventory</code>): installed in an item,
+        loose in your bags or bank, or kept on your key ring. An exaltation keeps the slot and class limits of the item it came from,
+        so those are read from that item's page on EQLWiki. Exaltations that fit several slots are listed under each.
+        Type comes from the exaltation slot it's in (Focus, Click, Worn, Proc), or from the item's effect.</p>
+      <div id="ex-status" class="muted"></div>
+      <div id="ex-table"></div>
+    </div>
   </section>
 
   <section id="tab-races" class="tab">

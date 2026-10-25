@@ -108,6 +108,8 @@ def make_handler(app):
                     return self._json(app.quests.view(char) if char else {"char": None})
                 if p == "/api/factions":
                     return self._json(app.factions.view(char) if char else {"char": None})
+                if p == "/api/exalts":
+                    return self._json(app.exalts.view(char) if char else {"char": None})
                 if p == "/api/deaths":
                     if not char:
                         return self._json({"char": None})
@@ -368,6 +370,12 @@ def make_handler(app):
                         return self.send_error(404)
                 app.save_state(force=True)
                 return self._json({"ok": True})
+            if p == "/api/exalts/refresh":
+                with app.lock:
+                    char = body.get("char") or app.char()
+                    rows = app.exalts.rows(char)[0] or []
+                n = app.exalts.lookup([r["name"] for r in rows], force=True)
+                return self._json({"ok": True, "looking_up": n})
             if p in ("/api/deaths/delete", "/api/deaths/clear"):
                 with app.lock:
                     char = body.get("char") or app.char()
