@@ -659,7 +659,7 @@ async function refreshCrawls() {
   if (!d || !d.char) { $('#crawl-now').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
   $('#crawl-now').innerHTML = crawlNow(d);
   $('#crawl-stop')?.addEventListener('click', async () => {
-    if (confirm('End this crawl now and keep its time?\n\nA crawl ended by hand can\'t be sent to the leaderboard (only ones ended by the Reward Chest, or a raid's final boss loot, can).')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
+    if (confirm('End this crawl now and keep its time?\n\nA crawl ended by hand can\'t be sent to the leaderboard (only ones ended by the Reward Chest, or a raid\'s final boss loot, can).')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
   });
   $('#crawl-reset')?.addEventListener('click', async () => {
     const r = await post('/api/crawls/reset', {char});
