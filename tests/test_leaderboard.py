@@ -456,10 +456,14 @@ class SubmitTests(unittest.TestCase):
         r = c.runs[-1]
         s = c._summary(r, T0 + 600)
         self.assertEqual((s["status"], s["category"], s["boss"], s["duration"], s["tier_label"]),
-                         ("done", "raid", "Innoruuk", 400, "Raid"))
+                         ("done", "raid", "Innoruuk", 400, "D0"))      # an instance with no tier name is Base
         self.assertEqual(s["proof"]["status"], "verified")
-        with self.assertRaises(ValueError):
-            c.set_level(r["id"], 2)                                   # no crawl difficulty for raids
+        r.update(level=None, tier="")                                 # as if the log hadn't shown it
+        c.set_level(r["id"], 2)                                       # raids have a difficulty too: pick it
+        s = c._summary(r, T0 + 600)
+        self.assertEqual((s["tier_label"], s["category"]), ("D2 Adaptive", "raid"))
+        b = c.bests("Me_x")[0]
+        self.assertEqual((b["category"], b["level"]), ("raid", 2))
         doc = I.build_proof(r, s, [time.strftime("[%a %b %d %H:%M:%S %Y] ", time.localtime(T0 + d)) + m
                                    for d, m in lines[1:5]], "test")
         doc["chain"] = ""
@@ -472,6 +476,18 @@ class SubmitTests(unittest.TestCase):
         feed(c2, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
                           (300, "--You have looted a Gem from Reward Chest.--")])
         self.assertEqual((c2.runs[-1]["status"], c2.runs[-1].get("category")), ("done", None))
+
+    def test_raid_keeps_its_difficulty(self):
+        from eqlc.crawls import Crawls
+        c = Crawls({})
+        feed(c, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
+                         (500, "--Bobbin has looted a Gem from Lady Vox's corpse.--")])
+        s = c._summary(c.runs[-1], T0 + 600)
+        self.assertEqual((s["category"], s["level"], s["tier_label"]), ("raid", 3, "D3 Fused"))
+        # a crawl and a raid in the same zone and difficulty have separate bests
+        feed(c, "Me_x", [(1000, "You have entered Permafrost 4 (Fused)."), (1020, "You have slain a goblin!"),
+                         (1300, "--You have looted a Gem from Reward Chest.--")])
+        self.assertEqual(sorted(b["category"] for b in c.bests("Me_x")), ["crawl", "raid"])
 
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)

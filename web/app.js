@@ -532,10 +532,10 @@ const hms = s => {
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = String(s % 60).padStart(2, '0');
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 };
-const lvlChip = r => `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
+const lvlChip = r => (r.category === 'raid' ? '<span class="raid-chip" title="Raid run: ended when the final boss was looted">Raid</span> ' : '') + `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
 const DIFFS = ['D0 Base', 'D1 Awakened', 'D2 Adaptive', 'D3 Fused', 'D4 Refined'];
 // the log didn't show the difficulty: let the player pick it (or change one they picked)
-const levelPicker = r => r.category !== 'raid' && (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
+const levelPicker = r => (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
     <option value="">${r.level == null ? 'Set difficulty…' : 'Unknown'}</option>${DIFFS.map((d, i) => `<option value="${i}"${r.level === i && r.level_by_hand ? ' selected' : ''}>${d}</option>`).join('')}</select>
     ${r.level_by_hand ? '<span class="muted small">set by you</span>' : ''}</span>` : '';
 const deltaHtml = d => d == null ? '' : d === 0 ? '<span class="delta ahead">best</span>'
@@ -699,7 +699,7 @@ async function refreshCrawls() {
           ${r.status !== 'active' ? `<button class="ghost" data-proof="${r.id}">Export proof file</button>` : ''}</div>
         <div><span>Instance:</span> ${esc(r.raw || '—')}</div>
         ${r.category === 'raid' ? `<div><span>Raid:</span> ${esc(r.raid || r.zone)} · ended when ${esc(r.boss || 'the final boss')} was looted</div>` : ''}
-        ${r.category !== 'raid' && (r.level == null || r.level_by_hand) ? `<div><span>Difficulty:</span> ${levelPicker(r)}${r.level == null ? ' <span class="muted small">not in the log</span>' : ''}</div>` : ''}
+        ${r.level == null || r.level_by_hand ? `<div><span>Difficulty:</span> ${levelPicker(r)}${r.level == null ? ' <span class="muted small">not in the log</span>' : ''}</div>` : ''}
         <div><span>Started:</span> ${dt(r.start)}${r.end ? ` · <span>ended</span> ${dt(r.end)}` : ''}</div>
         <div><span>Inside the instance:</span> ${hms(r.inside)}</div>
         <div><span>Ported out:</span> ${r.exits ? `${r.exits}× for ${hms(r.outside)}` : 'never'}</div>

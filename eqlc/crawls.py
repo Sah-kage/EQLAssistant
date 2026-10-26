@@ -503,8 +503,7 @@ class Crawls:
         if r["left_at"] is not None:
             r["outside"] += max(0.0, t - r["left_at"])
             r["left_at"] = None
-        r.update(end=t, last=t, status="done", ended_by="boss", category="raid", raid=raid, boss=boss,
-                 level=None, tier="", level_by_hand=False)
+        r.update(end=t, last=t, status="done", ended_by="boss", category="raid", raid=raid, boss=boss)
         self.active.pop(char, None)
         LOG.debug("raid run %s ended by looting %s after %ss", r["id"], boss, round(t - r["start"]))
         self.dirty = True
@@ -735,8 +734,6 @@ class Crawls:
             raise ValueError("No such run")
         if r.get("level") is not None and not r.get("level_by_hand"):
             raise ValueError("The log already shows this run's difficulty.")
-        if r.get("category") == "raid":
-            raise ValueError("Raids don't have a Dungeon Crawl difficulty.")
         if level is None:
             r.update(level=None, tier="", level_by_hand=False)
         else:
@@ -792,7 +789,7 @@ class Crawls:
 
     def _bucket(self, r):
         """Personal bests are kept per zone, difficulty and solo / multiplayer."""
-        return (r["zone"], "raid" if r.get("category") == "raid" else r["level"], self.party(r))
+        return (r["zone"], r["level"], self.party(r), r.get("category") or "crawl")
 
     def _summary(self, r, now, fights=()):
         end = r["end"] if r["status"] != "active" else now
@@ -811,7 +808,7 @@ class Crawls:
         return {
             "id": r["id"], "char": r["char"], "zone": r["zone"], "raw": r["raw"], "mode": r["mode"],
             "level": r["level"], "tier": r["tier"],
-            "tier_label": "Raid" if r.get("category") == "raid" else tier_label(r["level"], r["tier"]),
+            "tier_label": tier_label(r["level"], r["tier"]),
             "category": r.get("category") or "crawl", "raid": r.get("raid"), "boss": r.get("boss"),
             "raid_boss": raid_of(r["zone"])[1],
             "level_by_hand": bool(r.get("level_by_hand")),
@@ -843,8 +840,8 @@ class Crawls:
                 continue
             d = r["end"] - r["start"]
             b = out.setdefault(self._bucket(r), {"zone": r["zone"], "level": r["level"], "party": self.party(r),
-                                                 "tier_label": "Raid" if r.get("category") == "raid"
-                                                 else tier_label(r["level"], r["tier"]),
+                                                 "tier_label": tier_label(r["level"], r["tier"]),
+                                                 "category": r.get("category") or "crawl",
                                                  "runs": 0, "best": None, "best_id": None, "total": 0.0,
                                                  "last": None, "last_at": 0})
             b["runs"] += 1
@@ -856,7 +853,7 @@ class Crawls:
         rows = []
         for b in out.values():
             rows.append({"zone": b["zone"], "level": b["level"], "party": b["party"],
-                         "tier_label": b["tier_label"], "runs": b["runs"],
+                         "tier_label": b["tier_label"], "category": b["category"], "runs": b["runs"],
                          "best": round(b["best"]), "best_id": b["best_id"], "avg": round(b["total"] / b["runs"]),
                          "last": round(b["last"]), "last_at": b["last_at"]})
         return sorted(rows, key=lambda x: (-x["last_at"]))
@@ -888,8 +885,8 @@ class Crawls:
             just_done["pb"] = round(pb) if pb is not None else None
             just_done["new_pb"] = last_done["start_known"] and (pb is None or just_done["duration"] < pb)
         hist = []
-        bests = {(b["zone"], b["level"], b["party"]): b["best_id"] for b in self.bests(char)}
-        best_d = {(b["zone"], b["level"], b["party"]): b["best"] for b in self.bests(char)}
+        bests = {(b["zone"], b["level"], b["party"], b["category"]): b["best_id"] for b in self.bests(char)}
+        best_d = {(b["zone"], b["level"], b["party"], b["category"]): b["best"] for b in self.bests(char)}
         for r in reversed(runs[-300:]):
             s = self._summary(r, now, fights)
             s["is_best"] = bests.get(self._bucket(r)) == r["id"]
@@ -917,7 +914,7 @@ class Crawls:
             if r["status"] == "done" and now - r["end"] <= 5 * 60:
                 pb = self.pb_for(r)
                 d = round(r["end"] - r["start"])
-                return {"state": "done", "id": r["id"], "snap": self._snap(r), "zone": r["zone"], "tier_label": "Raid" if r.get("category") == "raid" else tier_label(r["level"], r["tier"]),
+                return {"state": "done", "id": r["id"], "snap": self._snap(r), "zone": r["zone"], "tier_label": tier_label(r["level"], r["tier"]),
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],

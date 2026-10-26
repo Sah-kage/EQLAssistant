@@ -466,3 +466,4 @@ ul.crashes a { color:var(--sky); }
 pre.crash { white-space:pre-wrap; max-height:60vh; overflow:auto; background:var(--panel2); border-radius:8px; padding:10px 12px; font-size:12px; }
 .lvl-chip.unknown { background:#ffffff10; color:var(--dim); border:1px dashed var(--line); }
 .lvlpick select { font-size:12px; padding:1px 4px; }
+.raid-chip { font-size:11px; padding:1px 7px; border-radius:9px; background:#f0776c26; color:#f0a39b; }

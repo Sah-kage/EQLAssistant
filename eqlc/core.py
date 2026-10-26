@@ -303,7 +303,7 @@ class App:
         if r.get("ended_by") == "removed":
             return ("This run ended at a \"has been removed from\" line, not the Reward Chest, so the leaderboard "
                     "can't check its time.")
-        if r.get("level") is None and r.get("category") != "raid":
+        if r.get("level") is None:
             return "The log didn't show this run's difficulty: set it first."
         v = I.verdict(r)
         if v["status"] == "suspicious":
