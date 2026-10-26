@@ -166,6 +166,9 @@ class Crawls:
              "chest": {}, "reward_xp": False, "refund": None, "notes": [],
              "entered": bool(z.get("inst")) and not z.get("from_available"), "completed_at": None,
              "offered": t, "waiting_kill": True, "proof": I.new_proof(history=self._meta is None)}
+        raid, boss = raid_of(r["zone"])
+        if boss:                                         # raid zones time raids: no Reward Chest, the final boss ends it
+            r.update(category="raid", raid=raid, boss=boss)
         self.runs.append(r)
         LOG.debug("crawl run %s set up: %s %s (%s)%s", r["id"], z.get("raw") or z.get("zone"), z.get("tier") or "",
                   char, "" if self._meta else " [from older log lines]")
@@ -465,8 +468,12 @@ class Crawls:
                     r[k] = here[k]
 
     def _chest(self, char, t):
-        """First 'from Reward Chest' line ends the run."""
+        """First 'from Reward Chest' line ends a dungeon crawl. Raids have no Reward Chest, so it never ends one."""
         r = self.current(char)
+        zone = (r or {}).get("zone") or (self.where.get(char) or {}).get("zone")
+        if raid_of(zone)[1]:
+            LOG.debug("Reward Chest line in raid zone %s ignored (raids end at the final boss)", zone)
+            return
         if not r:
             if self._recent(char, t):
                 return                                   # more chest loot from a run that already ended
