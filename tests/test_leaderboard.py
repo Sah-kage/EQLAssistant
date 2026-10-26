@@ -414,6 +414,30 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(Site.got, [])
         self.assertTrue(self.app.crawls._summary(r, T0 + 400)["stopped"])
 
+    def test_removed_from_ends_the_timer(self):
+        from eqlc.crawls import Crawls
+        c = Crawls({})
+        feed(c, "Me_x", [(0, "Unrest is now available to you."), (10, "You have entered Unrest 2 (Adaptive)."),
+                         (20, "You have slain a ghoul!"),
+                         (50, "Bobbin has been removed from the group."),               # someone leaving: ignored
+                         (60, "Bobbin tells the group, 'I has been removed from the raid lol'"),   # chat: ignored
+                         (90, "Zed says, 'you has been removed from the instance'"),
+                         (100, "You have slain a ghoul!")])
+        self.assertEqual(c.runs[-1]["status"], "active")
+        feed(c, "Me_x", [(250, "You have been removed from Unrest 2 (Adaptive)."),       # not "has been"
+                         (260, "Sahkage has been removed from the Dungeon Crawl instance.")])
+        r = c.runs[-1]
+        self.assertEqual((r["status"], r["ended_by"], round(r["end"] - r["start"])), ("done", "removed", 240))
+        s = c._summary(r, T0 + 400)
+        self.assertEqual((s["ended_by"], s["proof"]["status"]), ("removed", "unverified"))
+        self.assertTrue(any("has been removed from" in x for x in s["proof"]["reasons"]))
+        self.assertEqual(c.overlay("Me_x", now=T0 + 300)["state"], "done")
+        # the app won't send it: the leaderboard checks the time up to the Reward Chest
+        self.app.crawls = c
+        c.proof_dir = self.app.ddir
+        why = self.app.submittable(r)
+        self.assertIn("has been removed from", why)
+
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)
         r = self.app.crawls.runs[-1]

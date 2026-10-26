@@ -53,6 +53,15 @@ _CHARM_WORDS = ("charm", "beguile", "dominate", "cajol", "thrall", "befriend", "
                 "call of karana", "tunare's request", "whispers")
 
 
+# "... has been removed from ..." ends the timer too (e.g. removed from the crawl's instance). Not chat, and
+# not someone leaving the group / raid / guild ("Bobbin has been removed from the group.").
+_REMOVED_NOT = re.compile(r"\b(tells|told|says|said|shouts|auctions|ooc|guild|group|raid|fellowship|channel)\b|'", re.I)
+
+
+def removed_line(msg):
+    return "has been removed from" in msg.lower() and not _REMOVED_NOT.search(msg)
+
+
 def looks_like_mob(name):
     n = (name or "").strip()
     return n.lower().startswith(("a ", "an ", "the ")) or " " in n or "`" in n
@@ -358,6 +367,8 @@ class Crawls:
         typ = ev["type"] if ev else None
         if line and "from reward chest" in line.lower():
             self._chest(char, t)
+        elif line and "removed from" in line and removed_line(line.split("] ", 1)[-1]):
+            self._removed(char, t, line.split("] ", 1)[-1])
         if typ == "zone":
             self._zone(char, t, ev)
         elif typ == "crawl":
@@ -442,6 +453,24 @@ class Crawls:
         r["status"] = "done"
         LOG.debug("crawl run %s finished at the Reward Chest: %ss, %s kills", r["id"], round(t - r["start"]), r["kills"])
         self.active.pop(char, None)
+        self.dirty = True
+
+    def _removed(self, char, t, msg):
+        """'... has been removed from ...': the crawl is over, so the timer ends here."""
+        r = self.current(char)
+        if not r or r["status"] != "active":
+            return
+        if r.get("waiting_kill"):
+            r.update(waiting_kill=False, start_known=False)       # nothing killed: no real start time
+        if r.get("proof") is not None:
+            I.mark(r["proof"], "end", t, self._meta)
+            r["proof"]["removed_end"] = True
+        if r["left_at"] is not None:
+            r["outside"] += max(0.0, t - r["left_at"])
+            r["left_at"] = None
+        r.update(end=t, last=t, status="done", ended_by="removed", end_line=msg[:200])
+        self.active.pop(char, None)
+        LOG.debug("crawl run %s ended by %r after %ss", r["id"], msg, round(t - r["start"]))
         self.dirty = True
 
     def _zone(self, char, t, z):
@@ -733,6 +762,8 @@ class Crawls:
             "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]), "armed": r.get("armed"),
             "proof": I.verdict(r),
             "party": self.party(r), "players": self.players(r),
+            "ended_by": r.get("ended_by") or ("hand" if r.get("stopped") else ("chest" if r["status"] == "done" else None)),
+            "end_line": r.get("end_line"),
             "left_out": sorted(set(r.get("players") or {}) - set(self.players(r))), "stopped": bool(r.get("stopped")),
             "combat": round(combat) if combat is not None else None,
             "kills": r["kills"], "deaths": r["deaths"],
@@ -829,6 +860,7 @@ class Crawls:
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
-                        "party": self.party(r), "players": self.players(r), "stopped": bool(r.get("stopped"))}
+                        "party": self.party(r), "players": self.players(r), "stopped": bool(r.get("stopped")),
+                        "ended_by": r.get("ended_by")}
             break
         return None
