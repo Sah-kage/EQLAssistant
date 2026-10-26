@@ -27,7 +27,7 @@ import os
 import time
 import uuid
 
-LAG = 15            # seconds a line may take to reach the app
+LAG = 30            # seconds a line may take to reach the app (the game can take ~15s to write its log)
 CLOCK_SLACK = 5     # seconds of disagreement allowed between log times and the monotonic clock
 SESSION = uuid.uuid4().hex[:12]     # this run of the app
 VERSION = 1
@@ -105,10 +105,13 @@ def verdict(run):
                 why.append(f"The Reward Chest line reached the app {p['end_lag']:.0f}s after its time stamp.")
         if p["start_session"] and p["end_session"] and p["start_session"] != p["end_session"]:
             why.append("The app was restarted during the run.")
-        if p["late"]:
+        # runs recorded when the limit was lower counted lines as late against that limit:
+        # if even the slowest line was within today's limit, none of them was late
+        late = p["late"] if (p.get("max_lag") or 0) > LAG else 0
+        if late:
             bad = True
-            why.append(f"{p['late']} line{'s' if p['late'] != 1 else ''} arrived more than {LAG}s after "
-                       f"{'their' if p['late'] != 1 else 'its'} time stamp (written into the log later).")
+            why.append(f"{late} line{'s' if late != 1 else ''} arrived more than {LAG}s after "
+                       f"{'their' if late != 1 else 'its'} time stamp (written into the log later).")
         if p["ooo"]:
             bad = True
             why.append(f"Time stamps go backwards {p['ooo']} time{'s' if p['ooo'] != 1 else ''}.")

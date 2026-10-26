@@ -749,6 +749,16 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(c._summary(r, T0 + 400)["proof"]["status"], "verified")
         # a line written into the log a minute after its time stamp
         self.assertEqual(I.verdict(run(L, late_at=40)[1])["status"], "suspicious")
+        # the game can take ~15s to write its log: up to 30s is fine, more is late
+        self.assertEqual(I.verdict(run(L, lag=16)[1])["status"], "verified")
+        self.assertEqual(I.verdict(run(L, lag=29)[1])["status"], "verified")
+        self.assertEqual(I.verdict(run(L, lag=31)[1])["status"], "suspicious")
+        # a run recorded with the old 15s limit: lines counted late, but the slowest was only 18s
+        old = run(L, lag=18)[1]
+        old["proof"]["late"] = 5
+        self.assertEqual(I.verdict(old)["status"], "verified")
+        old["proof"]["max_lag"] = 45.0
+        self.assertEqual(I.verdict(old)["status"], "suspicious")
         # PC clock changed during the run: log says 280s, but 380s passed
         v = I.verdict(run(L, clock_skew=100)[1])
         self.assertEqual(v["status"], "suspicious")

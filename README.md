@@ -157,7 +157,7 @@ The first time you run this version, the app looks back through your existing lo
 
 The app can't make a text log tamper-proof, because anyone can edit a file on their own PC. What it can do is act as a witness while you play. Every completed run gets a **Log check** badge:
 
-- **✓ Logged live:** every line of the run reached the app within 15 seconds of the time stamped on it, and:
+- **✓ Logged live:** every line of the run reached the app within 30 seconds of the time stamped on it (the game can take about 15 seconds to write its log), and:
   - time stamps never went backwards;
   - the log file only grew (nothing already read was changed or cut);
   - the run's length matches a stopwatch the app runs alongside it, which catches changing the PC clock mid-run;
