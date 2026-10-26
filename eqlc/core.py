@@ -303,7 +303,7 @@ class App:
         if r.get("ended_by") == "removed":
             return ("This run ended at a \"has been removed from\" line, not the Reward Chest, so the leaderboard "
                     "can't check its time.")
-        if r.get("level") is None:
+        if r.get("level") is None and r.get("category") != "raid":
             return "The log didn't show this run's difficulty: set it first."
         v = I.verdict(r)
         if v["status"] == "suspicious":
@@ -335,6 +335,7 @@ class App:
                                            "start", "end", "stopped")}
         run["tier"] = run.pop("tier_label")
         run["tier_set_by_hand"] = bool(r.get("level_by_hand"))           # not shown in the log: the player picked it
+        run.update(category=r.get("category") or "crawl", raid=r.get("raid"), end_boss=r.get("boss"))
         edits = r.get("class_edits") or {}
         body = L.payload(proof, server, classes, video, summary["party"],
                          [dict({k: g.get(k) for k in ("name", "classes", "source", "sure", "you", "level")},

@@ -438,6 +438,41 @@ class SubmitTests(unittest.TestCase):
         why = self.app.submittable(r)
         self.assertIn("has been removed from", why)
 
+    def test_raid_ends_at_final_boss_loot(self):
+        from eqlc.crawls import Crawls, raid_of
+        from eqlc import integrity as I
+        self.assertEqual(raid_of("Permafrost Keep"), ("Permafrost", "Lady Vox"))
+        self.assertEqual(raid_of("The Plane of Hate"), ("Plane of Hate", "Innoruuk"))
+        self.assertEqual(raid_of("Unrest"), (None, None))
+        lines = [(0, "You have entered Plane of Hate 12."), (30, "You have slain Lord of Ire!"),
+                 (200, "--Bobbin has looted a Mithril Greaves from Maestro of Rancor's corpse.--"),   # not the last boss
+                 (400, "Innoruuk has been slain by Bobbin!"),
+                 (430, "--Bobbin has looted Innoruuk's Curse from Innoruuk's corpse.--"),            # ends here
+                 (440, "--You have looted a Gem from Innoruuk's corpse.--")]
+        c = Crawls({})
+        feed(c, "Me_x", lines[:3])
+        self.assertEqual(c.runs[-1]["status"], "active")
+        feed(c, "Me_x", lines[3:])
+        r = c.runs[-1]
+        s = c._summary(r, T0 + 600)
+        self.assertEqual((s["status"], s["category"], s["boss"], s["duration"], s["tier_label"]),
+                         ("done", "raid", "Innoruuk", 400, "Raid"))
+        self.assertEqual(s["proof"]["status"], "verified")
+        with self.assertRaises(ValueError):
+            c.set_level(r["id"], 2)                                   # no crawl difficulty for raids
+        doc = I.build_proof(r, s, [time.strftime("[%a %b %d %H:%M:%S %Y] ", time.localtime(T0 + d)) + m
+                                   for d, m in lines[1:5]], "test")
+        doc["chain"] = ""
+        for ln in doc["lines"]:
+            doc["chain"] = I.chain(doc["chain"], ln)
+        doc["checks"]["lines"] = len(doc["lines"])
+        self.assertTrue(I.check_proof(doc)["ok"], I.check_proof(doc))  # time = first kill -> boss loot
+        # in a raid zone a crawl with a Reward Chest still ends at the chest
+        c2 = Crawls({})
+        feed(c2, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
+                          (300, "--You have looted a Gem from Reward Chest.--")])
+        self.assertEqual((c2.runs[-1]["status"], c2.runs[-1].get("category")), ("done", None))
+
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)
         r = self.app.crawls.runs[-1]

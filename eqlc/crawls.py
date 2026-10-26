@@ -92,6 +92,37 @@ def same_zone(a, b):
     return bool(a) and bool(b) and norm(a) == norm(b)
 
 
+# Raids: the run ends when the raid's final boss is looted ("--You have looted ... from Lady Vox's corpse.--"),
+# not at a Reward Chest. Final boss of each Classic raid (same list as the Raids tab and the leaderboard).
+RAID_FINAL = {"Nagafen's Lair": "Lord Nagafen", "Permafrost": "Lady Vox", "Kedge Keep": "Phinigel Autropos",
+              "The Hole": "Master Yael", "Plane of Fear": "Cazic Thule", "Plane of Hate": "Innoruuk"}
+_RAID_ALIASES = {"permafrostkeep": "Permafrost", "permafrostcaverns": "Permafrost", "solusekbsnagafenslair": "Nagafen's Lair",
+                 "lavastormnagafenslair": "Nagafen's Lair", "ruinsofoldpaineel": "The Hole", "hole": "The Hole",
+                 "kedgekeepcavern": "Kedge Keep", "planeoffeardread": "Plane of Fear", "planeofhaterevisited": "Plane of Hate"}
+
+
+def _zkey(s):
+    s = (s or "").lower().replace("`", "'").strip()
+    s = s[4:] if s.startswith("the ") else s
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+def raid_of(zone):
+    """'Permafrost Keep' -> ('Permafrost', 'Lady Vox'); not a raid zone -> (None, None)."""
+    k = _zkey(zone)
+    for z, boss in RAID_FINAL.items():
+        if _zkey(z) == k:
+            return z, boss
+    z = _RAID_ALIASES.get(k)
+    return (z, RAID_FINAL[z]) if z else (None, None)
+
+
+def boss_loot_line(msg, boss):
+    """'--Bobbin has looted a Spear from Lady Vox's corpse.--' (anyone's loot) for this boss."""
+    m = msg.lower().replace("`", "'")
+    return " looted " in m and f"from {boss.lower().replace('`', chr(39))}'s corpse" in m
+
+
 def tier_label(level, tier=""):
     if level is None:
         return tier or "?"
@@ -367,6 +398,8 @@ class Crawls:
         typ = ev["type"] if ev else None
         if line and "from reward chest" in line.lower():
             self._chest(char, t)
+        elif line and "corpse" in line and self._raid_end(char, t, line.split("] ", 1)[-1]):
+            pass
         elif line and "removed from" in line and removed_line(line.split("] ", 1)[-1]):
             self._removed(char, t, line.split("] ", 1)[-1])
         if typ == "zone":
@@ -454,6 +487,28 @@ class Crawls:
         LOG.debug("crawl run %s finished at the Reward Chest: %ss, %s kills", r["id"], round(t - r["start"]), r["kills"])
         self.active.pop(char, None)
         self.dirty = True
+
+    def _raid_end(self, char, t, msg):
+        """In a raid zone, looting the raid's final boss ends the run (a raid run, not a crawl)."""
+        r = self.current(char)
+        if not r or r["status"] != "active":
+            return False
+        raid, boss = raid_of(r["zone"])
+        if not boss or not boss_loot_line(msg, boss):
+            return False
+        if r.get("waiting_kill"):
+            r.update(waiting_kill=False, start_known=False)
+        if r.get("proof") is not None:
+            I.mark(r["proof"], "end", t, self._meta)
+        if r["left_at"] is not None:
+            r["outside"] += max(0.0, t - r["left_at"])
+            r["left_at"] = None
+        r.update(end=t, last=t, status="done", ended_by="boss", category="raid", raid=raid, boss=boss,
+                 level=None, tier="", level_by_hand=False)
+        self.active.pop(char, None)
+        LOG.debug("raid run %s ended by looting %s after %ss", r["id"], boss, round(t - r["start"]))
+        self.dirty = True
+        return True
 
     def _removed(self, char, t, msg):
         """'... has been removed from ...': the crawl is over, so the timer ends here."""
@@ -680,6 +735,8 @@ class Crawls:
             raise ValueError("No such run")
         if r.get("level") is not None and not r.get("level_by_hand"):
             raise ValueError("The log already shows this run's difficulty.")
+        if r.get("category") == "raid":
+            raise ValueError("Raids don't have a Dungeon Crawl difficulty.")
         if level is None:
             r.update(level=None, tier="", level_by_hand=False)
         else:
@@ -735,7 +792,7 @@ class Crawls:
 
     def _bucket(self, r):
         """Personal bests are kept per zone, difficulty and solo / multiplayer."""
-        return (r["zone"], r["level"], self.party(r))
+        return (r["zone"], "raid" if r.get("category") == "raid" else r["level"], self.party(r))
 
     def _summary(self, r, now, fights=()):
         end = r["end"] if r["status"] != "active" else now
@@ -753,7 +810,10 @@ class Crawls:
         hours = dur / 3600 if dur else 0
         return {
             "id": r["id"], "char": r["char"], "zone": r["zone"], "raw": r["raw"], "mode": r["mode"],
-            "level": r["level"], "tier": r["tier"], "tier_label": tier_label(r["level"], r["tier"]),
+            "level": r["level"], "tier": r["tier"],
+            "tier_label": "Raid" if r.get("category") == "raid" else tier_label(r["level"], r["tier"]),
+            "category": r.get("category") or "crawl", "raid": r.get("raid"), "boss": r.get("boss"),
+            "raid_boss": raid_of(r["zone"])[1],
             "level_by_hand": bool(r.get("level_by_hand")),
             "start": r["start"], "end": r["end"], "status": r["status"], "start_known": r["start_known"],
             "duration": round(dur), "inside": round(max(0.0, dur - outside)), "outside": round(outside),
@@ -783,7 +843,8 @@ class Crawls:
                 continue
             d = r["end"] - r["start"]
             b = out.setdefault(self._bucket(r), {"zone": r["zone"], "level": r["level"], "party": self.party(r),
-                                                 "tier_label": tier_label(r["level"], r["tier"]),
+                                                 "tier_label": "Raid" if r.get("category") == "raid"
+                                                 else tier_label(r["level"], r["tier"]),
                                                  "runs": 0, "best": None, "best_id": None, "total": 0.0,
                                                  "last": None, "last_at": 0})
             b["runs"] += 1
@@ -856,11 +917,11 @@ class Crawls:
             if r["status"] == "done" and now - r["end"] <= 5 * 60:
                 pb = self.pb_for(r)
                 d = round(r["end"] - r["start"])
-                return {"state": "done", "id": r["id"], "snap": self._snap(r), "zone": r["zone"], "tier_label": tier_label(r["level"], r["tier"]),
+                return {"state": "done", "id": r["id"], "snap": self._snap(r), "zone": r["zone"], "tier_label": "Raid" if r.get("category") == "raid" else tier_label(r["level"], r["tier"]),
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
                         "party": self.party(r), "players": self.players(r), "stopped": bool(r.get("stopped")),
-                        "ended_by": r.get("ended_by")}
+                        "ended_by": r.get("ended_by"), "boss": r.get("boss")}
             break
         return None

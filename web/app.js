@@ -535,7 +535,7 @@ const hms = s => {
 const lvlChip = r => `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
 const DIFFS = ['D0 Base', 'D1 Awakened', 'D2 Adaptive', 'D3 Fused', 'D4 Refined'];
 // the log didn't show the difficulty: let the player pick it (or change one they picked)
-const levelPicker = r => (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
+const levelPicker = r => r.category !== 'raid' && (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
     <option value="">${r.level == null ? 'Set difficulty…' : 'Unknown'}</option>${DIFFS.map((d, i) => `<option value="${i}"${r.level === i && r.level_by_hand ? ' selected' : ''}>${d}</option>`).join('')}</select>
     ${r.level_by_hand ? '<span class="muted small">set by you</span>' : ''}</span>` : '';
 const deltaHtml = d => d == null ? '' : d === 0 ? '<span class="delta ahead">best</span>'
@@ -639,9 +639,9 @@ function crawlNow(d) {
         <div><label>Outside</label><b>${hms(c.outside)}</b></div></div>
       <p class="hint">${c.waiting_kill ? (c.armed === 'zone'
         ? `You entered <code>${esc(c.raw || c.zone)}</code> at ${clock(c.offered)} (no “is now available” line — normal when someone else in your group opened the crawl). The timer starts on your first kill in it`
-        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. It ends when the first item is looted from the Reward Chest.</p>`;
+        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. ${c.raid_boss ? `In this raid zone it also ends when ${esc(c.raid_boss)} is looted.` : 'It ends when the first item is looted from the Reward Chest.'}</p>`;
   }
-  if (j) return `<div class="panel-h"><span>${j.stopped ? 'Crawl ended by hand' : j.ended_by === 'removed' ? 'Crawl ended (removed from the instance)' : 'Crawl complete'}${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
+  if (j) return `<div class="panel-h"><span>${j.stopped ? 'Crawl ended by hand' : j.ended_by === 'removed' ? 'Crawl ended (removed from the instance)' : j.category === 'raid' ? `Raid complete — ${esc(j.boss)} looted` : 'Crawl complete'}${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
       <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${levelPicker(j)} ${partyChip(j)}</div>
       <div class="crawl-live"><span class="big done">${hms(j.duration)}</span>
         ${j.pb != null ? `<span class="pbline">previous best <b>${hms(j.pb)}</b> ${deltaHtml(j.duration - j.pb)}</span>` : ''}</div>
@@ -698,7 +698,8 @@ async function refreshCrawls() {
           <ul>${r.proof.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
           ${r.status !== 'active' ? `<button class="ghost" data-proof="${r.id}">Export proof file</button>` : ''}</div>
         <div><span>Instance:</span> ${esc(r.raw || '—')}</div>
-        ${r.level == null || r.level_by_hand ? `<div><span>Difficulty:</span> ${levelPicker(r)}${r.level == null ? ' <span class="muted small">not in the log</span>' : ''}</div>` : ''}
+        ${r.category === 'raid' ? `<div><span>Raid:</span> ${esc(r.raid || r.zone)} · ended when ${esc(r.boss || 'the final boss')} was looted</div>` : ''}
+        ${r.category !== 'raid' && (r.level == null || r.level_by_hand) ? `<div><span>Difficulty:</span> ${levelPicker(r)}${r.level == null ? ' <span class="muted small">not in the log</span>' : ''}</div>` : ''}
         <div><span>Started:</span> ${dt(r.start)}${r.end ? ` · <span>ended</span> ${dt(r.end)}` : ''}</div>
         <div><span>Inside the instance:</span> ${hms(r.inside)}</div>
         <div><span>Ported out:</span> ${r.exits ? `${r.exits}× for ${hms(r.outside)}` : 'never'}</div>

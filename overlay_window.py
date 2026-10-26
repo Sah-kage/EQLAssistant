@@ -603,7 +603,8 @@ class CrawlOverlay(OverlayBase):
             new = c.get("new_pb")
             odd = c.get("stopped") or c.get("ended_by") == "removed"
             self.head.config(text="CRAWL ENDED BY HAND" if c.get("stopped") else
-                             "CRAWL ENDED (REMOVED)" if odd else "CRAWL COMPLETE",
+                             "CRAWL ENDED (REMOVED)" if odd else
+                             "RAID COMPLETE" if c.get("ended_by") == "boss" else "CRAWL COMPLETE",
                              fg=DIM if odd else (GOLD if new else GREEN))
             self.big.config(text=clock(c["elapsed"]), fg=GOLD if new else FG)
             if new:

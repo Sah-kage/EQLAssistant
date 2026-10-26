@@ -185,6 +185,8 @@ def build_proof(run, summary, lines, app_version):
             "created": time.time(), "char": run["char"].partition("_")[0],
             "server": run["char"].partition("_")[2], "zone": run["zone"], "raw_zone": run["raw"],
             "tier": summary.get("tier_label"), "duration": summary.get("duration"),
+            # raids end when the final boss is looted ("from Lady Vox's corpse"), not at a Reward Chest
+            "category": run.get("category") or "crawl", "raid": run.get("raid"), "end_boss": run.get("boss"),
             "start": run["start"], "end": run["end"], "kills": run["kills"], "deaths": run["deaths"],
             "verdict": v, "checks": {k: run["proof"].get(k) for k in
                                      ("lines", "late", "max_lag", "ooo", "start_lag", "end_lag", "file_events",
@@ -218,6 +220,10 @@ def check_proof(doc):
             first_kill = t
         if chest is None and "from reward chest" in ln.lower():
             chest = t
+        if chest is None and doc.get("category") == "raid" and doc.get("end_boss"):
+            from .crawls import boss_loot_line
+            if boss_loot_line(ln.split("] ", 1)[-1], doc["end_boss"]):
+                chest = t
     if any(b < a - 1 for a, b in zip(times, times[1:])):
         problems.append("Time stamps in the lines go backwards.")
     if first_kill is not None and chest is not None and doc.get("duration") is not None:
