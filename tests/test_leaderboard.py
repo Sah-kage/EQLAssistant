@@ -401,6 +401,19 @@ class SubmitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.app.crawls.set_level(self.app.crawls.runs[-1]["id"], 4)
 
+    def test_ended_by_hand_cannot_be_sent(self):
+        feed(self.app.crawls, self.char, RUN[:-1])                     # no Reward Chest yet
+        self.app.set_my_classes(self.char, ["Wizard", "Cleric", "Rogue"])
+        r = self.app.crawls.stop(self.char, now=T0 + 280)              # "End crawl"
+        self.assertEqual((r["status"], r["stopped"]), ("done", True))
+        with self.assertRaises(ValueError) as e:
+            self.app.submit_run(r["id"])
+        self.assertIn("ended by hand", str(e.exception))
+        self.app.auto_submit()
+        time.sleep(0.2)
+        self.assertEqual(Site.got, [])
+        self.assertTrue(self.app.crawls._summary(r, T0 + 400)["stopped"])
+
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)
         r = self.app.crawls.runs[-1]

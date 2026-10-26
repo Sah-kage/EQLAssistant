@@ -829,6 +829,6 @@ class Crawls:
                         "elapsed": d, "pb": round(pb) if pb is not None else None,
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
-                        "party": self.party(r), "players": self.players(r)}
+                        "party": self.party(r), "players": self.players(r), "stopped": bool(r.get("stopped"))}
             break
         return None

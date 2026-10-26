@@ -298,6 +298,8 @@ class App:
             return "The run isn't finished."
         if not r.get("start_known"):
             return "The run's start time isn't known."
+        if r.get("stopped"):
+            return "This run was ended by hand, not by the Reward Chest, so it can't be sent to the leaderboard."
         if r.get("level") is None:
             return "The log didn't show this run's difficulty: set it first."
         v = I.verdict(r)

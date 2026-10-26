@@ -574,6 +574,7 @@ function lbStatus(r) {
     return sent + ` <button class="ghost tiny" data-submit="${r.id}" title="Change the classes and send the run again. It will show as edited.">Edit classes &amp; resubmit…</button>`;
   }
   const err = r.submit_error ? `<span class="lb err">Not sent: ${esc(r.submit_error.msg)}</span> ` : '';
+  if (r.stopped) return '<span class="muted" title="Only runs ended by the Reward Chest can be sent">Ended by hand — can\'t be sent to the leaderboard</span>';
   const can = r.status === 'done' && r.start_known && r.proof && r.proof.status !== 'suspicious';
   return err + (can ? `<button class="primary" data-submit="${r.id}">${r.submit_error ? 'Try again…' : 'Submit to leaderboard…'}</button>` : '');
 }
@@ -623,7 +624,7 @@ function crawlNow(d) {
   if (c) {
     const vs = c.pb != null ? c.duration - c.pb : null;
     return `<div class="panel-h"><span>${c.away_now ? 'Crawl paused — you are outside the instance' : 'Current run'}</span>
-        <span class="btns" style="margin:0"><button class="ghost" id="crawl-stop" title="End this run now and keep its time">Stop timer</button>
+        <span class="btns" style="margin:0"><button class="ghost" id="crawl-stop" title="End this run now and keep its time. A run ended by hand can't be sent to the leaderboard.">End crawl</button>
         <button class="ghost" id="crawl-reset" title="Back to 0:00: the timer starts again on your next kill">Reset timer</button>
         <button class="ghost" id="crawl-discard" title="This is a normal instance, not a crawl">Not a crawl</button></span></div>
       <div><b>${esc(c.zone)}</b> ${lvlChip(c)} ${levelPicker(c)} ${partyChip(c)}</div>
@@ -639,7 +640,7 @@ function crawlNow(d) {
         ? `You entered <code>${esc(c.raw || c.zone)}</code> at ${clock(c.offered)} (no “is now available” line — normal when someone else in your group opened the crawl). The timer starts on your first kill in it`
         : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. It ends when the first item is looted from the Reward Chest.</p>`;
   }
-  if (j) return `<div class="panel-h"><span>Crawl complete${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
+  if (j) return `<div class="panel-h"><span>${j.stopped ? 'Crawl ended by hand' : 'Crawl complete'}${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
       <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${levelPicker(j)} ${partyChip(j)}</div>
       <div class="crawl-live"><span class="big done">${hms(j.duration)}</span>
         ${j.pb != null ? `<span class="pbline">previous best <b>${hms(j.pb)}</b> ${deltaHtml(j.duration - j.pb)}</span>` : ''}</div>
@@ -657,7 +658,7 @@ async function refreshCrawls() {
   if (!d || !d.char) { $('#crawl-now').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
   $('#crawl-now').innerHTML = crawlNow(d);
   $('#crawl-stop')?.addEventListener('click', async () => {
-    if (confirm('Stop the timer and save this run with its current time?')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
+    if (confirm('End this crawl now and keep its time?\n\nA crawl ended by hand can\'t be sent to the leaderboard (only ones ended by the Reward Chest can).')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
   });
   $('#crawl-reset')?.addEventListener('click', async () => {
     const r = await post('/api/crawls/reset', {char});

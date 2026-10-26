@@ -1,2 +1,2 @@
 """EQL Assistant."""
-__version__ = "1.10.1"     # the GitHub release build replaces this with the tag (e.g. v1.2.0 -> 1.2.0)
+__version__ = "1.10.2"     # the GitHub release build replaces this with the tag (e.g. v1.2.0 -> 1.2.0)

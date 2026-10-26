@@ -94,7 +94,7 @@ class OverlayBase:
             self.m.add_command(label="Open my fight breakdown  (double-click)", command=self._open_breakdown)
             self.m.add_separator()
         if self.kind == "crawl":
-            self.m.add_command(label="Stop timer (keep this run)", command=lambda: self._post("/api/crawls/stop", {}))
+            self.m.add_command(label="End crawl now (can't be submitted)", command=lambda: self._post("/api/crawls/stop", {}))
             self.m.add_command(label="Reset timer (back to 0:00)", command=lambda: self._post("/api/crawls/reset", {}))
             self.m.add_separator()
         self.m.add_command(label="Lock / unlock position and size", command=self._toggle_lock)
@@ -601,7 +601,8 @@ class CrawlOverlay(OverlayBase):
                 self._snapped.add(c["id"])
                 self.root.after(800, lambda rid=c["id"]: self._snapshot(rid))   # once the window shows the result
             new = c.get("new_pb")
-            self.head.config(text="CRAWL COMPLETE", fg=GOLD if new else GREEN)
+            self.head.config(text="CRAWL ENDED BY HAND" if c.get("stopped") else "CRAWL COMPLETE",
+                             fg=DIM if c.get("stopped") else (GOLD if new else GREEN))
             self.big.config(text=clock(c["elapsed"]), fg=GOLD if new else FG)
             if new:
                 self.pb.config(text="NEW BEST!" if pb is None else f"NEW BEST  (was {clock(pb)})", fg=GOLD)
