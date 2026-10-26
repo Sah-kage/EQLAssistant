@@ -464,3 +464,5 @@ table.ex a { color:var(--sky); text-decoration:none; } table.ex a:hover { text-d
 ul.crashes { margin:4px 0 8px 18px; padding:0; font-size:13px; }
 ul.crashes a { color:var(--sky); }
 pre.crash { white-space:pre-wrap; max-height:60vh; overflow:auto; background:var(--panel2); border-radius:8px; padding:10px 12px; font-size:12px; }
+.lvl-chip.unknown { background:#ffffff10; color:var(--dim); border:1px dashed var(--line); }
+.lvlpick select { font-size:12px; padding:1px 4px; }

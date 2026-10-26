@@ -643,6 +643,27 @@ class Crawls:
         saved = self.saved_classes(r["char"]) if name == me else None
         return self.classes.classes_of(server or "-", name, saved, at=r.get("start"))
 
+    def set_level(self, rid, level):
+        """Difficulty set by hand (D0-D4), for a run whose difficulty the log didn't show.
+        level None = back to unknown. A difficulty the log shows can't be changed."""
+        r = self._get(rid)
+        if not r:
+            raise ValueError("No such run")
+        if r.get("level") is not None and not r.get("level_by_hand"):
+            raise ValueError("The log already shows this run's difficulty.")
+        if level is None:
+            r.update(level=None, tier="", level_by_hand=False)
+        else:
+            level = int(level)
+            if level not in TIER_NAMES:
+                raise ValueError("Pick a difficulty from D0 to D4")
+            r.update(level=level, tier=TIER_NAMES[level] if level else "", level_by_hand=True)
+        LOG.info("crawl run %s: difficulty set by hand to %s", rid, tier_label(r["level"], r["tier"]))
+        if r.get("submitted"):
+            r["changed_since_sent"] = True
+        self.dirty = True
+        return r
+
     def set_classes(self, rid, name, classes):
         """Classes set by hand for one person in one run (e.g. a loadout the log can't show).
         Every edit is remembered (what it was, what it became) and sent with the run, so it shows as edited."""
@@ -704,6 +725,7 @@ class Crawls:
         return {
             "id": r["id"], "char": r["char"], "zone": r["zone"], "raw": r["raw"], "mode": r["mode"],
             "level": r["level"], "tier": r["tier"], "tier_label": tier_label(r["level"], r["tier"]),
+            "level_by_hand": bool(r.get("level_by_hand")),
             "start": r["start"], "end": r["end"], "status": r["status"], "start_known": r["start_known"],
             "duration": round(dur), "inside": round(max(0.0, dur - outside)), "outside": round(outside),
             "exits": r["exits"], "entered": r.get("entered", True), "away_now": r["status"] == "active" and r["left_at"] is not None,

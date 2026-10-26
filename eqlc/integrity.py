@@ -121,11 +121,13 @@ def verdict(run):
             if abs(wall - mono) > CLOCK_SLACK:
                 bad = True
                 why.append(f"The log says {wall:.0f}s but {mono:.0f}s actually passed (PC clock changed?).")
+    # not something the log proves, so say so (it doesn't change the verdict on the time)
+    note = (["The difficulty was set by hand: the log didn't show it."] if run.get("level_by_hand") else [])
     if bad:
-        return {"status": "suspicious", "reasons": why}
+        return {"status": "suspicious", "reasons": why + note}
     if why:
-        return {"status": "unverified", "reasons": why}
-    return {"status": "verified", "reasons": ["Every line of this run was seen by the app as the game wrote it."]}
+        return {"status": "unverified", "reasons": why + note}
+    return {"status": "verified", "reasons": ["Every line of this run was seen by the app as the game wrote it."] + note}
 
 
 # ---------------------------------------------------------------------------- file watching

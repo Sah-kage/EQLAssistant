@@ -363,6 +363,15 @@ def make_handler(app):
                 if p == "/api/update/open":
                     return self._json({"ok": True, "url": app.updates.open(body.get("which") or "download")})
                 return self.send_error(404)
+            if p == "/api/crawls/level":
+                lv = body.get("level")
+                with app.lock:
+                    try:
+                        app.crawls.set_level(int(body.get("id")), None if lv in (None, "") else int(lv))
+                    except (TypeError, ValueError) as e:
+                        return self._json({"ok": False, "error": str(e) or "No such run"}, 400)
+                app.save_state(force=True)
+                return self._json({"ok": True})
             if p == "/api/crawls/classes":
                 from .classes_data import CLASSES
                 cl = [c for c in (body.get("classes") or []) if c in CLASSES]

@@ -532,7 +532,12 @@ const hms = s => {
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = String(s % 60).padStart(2, '0');
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 };
-const lvlChip = r => `<span class="lvl-chip l${r.level ?? 0}">${esc(r.tier_label)}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
+const lvlChip = r => `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
+const DIFFS = ['D0 Base', 'D1 Awakened', 'D2 Adaptive', 'D3 Fused', 'D4 Refined'];
+// the log didn't show the difficulty: let the player pick it (or change one they picked)
+const levelPicker = r => (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
+    <option value="">${r.level == null ? 'Set difficulty…' : 'Unknown'}</option>${DIFFS.map((d, i) => `<option value="${i}"${r.level === i && r.level_by_hand ? ' selected' : ''}>${d}</option>`).join('')}</select>
+    ${r.level_by_hand ? '<span class="muted small">set by you</span>' : ''}</span>` : '';
 const deltaHtml = d => d == null ? '' : d === 0 ? '<span class="delta ahead">best</span>'
   : `<span class="delta ${d < 0 ? 'ahead' : 'behind'}">${d < 0 ? '−' : '+'}${hms(Math.abs(d))}</span>`;
 const partyChip = r => r.party === 'group'
@@ -621,7 +626,7 @@ function crawlNow(d) {
         <span class="btns" style="margin:0"><button class="ghost" id="crawl-stop" title="End this run now and keep its time">Stop timer</button>
         <button class="ghost" id="crawl-reset" title="Back to 0:00: the timer starts again on your next kill">Reset timer</button>
         <button class="ghost" id="crawl-discard" title="This is a normal instance, not a crawl">Not a crawl</button></span></div>
-      <div><b>${esc(c.zone)}</b> ${lvlChip(c)} ${partyChip(c)}</div>
+      <div><b>${esc(c.zone)}</b> ${lvlChip(c)} ${levelPicker(c)} ${partyChip(c)}</div>
       <div class="crawl-live"><span class="big ${c.away_now ? 'away' : ''}">${hms(c.duration)}</span>
         ${c.pb != null ? `<span class="pbline">best <b>${hms(c.pb)}</b> ${deltaHtml(vs)}</span>` : '<span class="pbline">first timed run here</span>'}</div>
       <div class="crawl-stats">
@@ -635,7 +640,7 @@ function crawlNow(d) {
         : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. It ends when the first item is looted from the Reward Chest.</p>`;
   }
   if (j) return `<div class="panel-h"><span>Crawl complete${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
-      <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${partyChip(j)}</div>
+      <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${levelPicker(j)} ${partyChip(j)}</div>
       <div class="crawl-live"><span class="big done">${hms(j.duration)}</span>
         ${j.pb != null ? `<span class="pbline">previous best <b>${hms(j.pb)}</b> ${deltaHtml(j.duration - j.pb)}</span>` : ''}</div>
       <div class="crawl-stats"><div><label>Kills</label><b>${j.kills}</b></div><div><label>Deaths</label><b>${j.deaths}</b></div>
@@ -647,6 +652,7 @@ function crawlNow(d) {
 }
 
 async function refreshCrawls() {
+  if (document.activeElement && document.activeElement.matches('[data-setlevel]')) return;   // picking a difficulty
   const d = await get('/api/crawls?' + q());
   if (!d || !d.char) { $('#crawl-now').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
   $('#crawl-now').innerHTML = crawlNow(d);
@@ -690,6 +696,7 @@ async function refreshCrawls() {
           <ul>${r.proof.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
           ${r.status !== 'active' ? `<button class="ghost" data-proof="${r.id}">Export proof file</button>` : ''}</div>
         <div><span>Instance:</span> ${esc(r.raw || '—')}</div>
+        ${r.level == null || r.level_by_hand ? `<div><span>Difficulty:</span> ${levelPicker(r)}${r.level == null ? ' <span class="muted small">not in the log</span>' : ''}</div>` : ''}
         <div><span>Started:</span> ${dt(r.start)}${r.end ? ` · <span>ended</span> ${dt(r.end)}` : ''}</div>
         <div><span>Inside the instance:</span> ${hms(r.inside)}</div>
         <div><span>Ported out:</span> ${r.exits ? `${r.exits}× for ${hms(r.outside)}` : 'never'}</div>
@@ -719,6 +726,11 @@ async function refreshCrawls() {
     const f = $('#proof-folder'); if (f) f.onclick = () => window.pywebview.api.open_folder(r.folder);
   });
   $$('[data-submit]').forEach(b => b.onclick = e => { e.stopPropagation(); submitDialog(+b.dataset.submit); });
+  $$('[data-setlevel]').forEach(s => { s.onclick = e => e.stopPropagation(); s.onchange = async () => {
+    const r = await post('/api/crawls/level', {char, id: +s.dataset.setlevel, level: s.value === '' ? null : +s.value});
+    if (r && r.ok === false) alert(r.error);
+    refreshCrawls();
+  }; });
   $$('[data-editcls]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
     if (!CLASSES.length) { const s = await get('/api/settings'); CLASSES = (s && s.classes) || []; }

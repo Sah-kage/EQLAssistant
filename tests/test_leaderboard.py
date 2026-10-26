@@ -371,6 +371,36 @@ class SubmitTests(unittest.TestCase):
         self.assertNotIn("site_missed_edit", r["submitted"])
         self.assertFalse(r.get("changed_since_sent"))
 
+    def test_difficulty_set_by_hand(self):
+        lines = [(0, "Unrest is now available to you."), (20, "You have slain a ghoul!"),     # never zoned in: no tier
+                 (300, "--You have looted a Gem from Reward Chest.--")]
+        feed(self.app.crawls, self.char, lines)
+        r = self.app.crawls.runs[-1]
+        self.assertIsNone(r["level"])
+        self.app.set_my_classes(self.char, ["Wizard", "Cleric", "Rogue"])
+        with self.assertRaises(ValueError) as e:
+            self.app.submit_run(r["id"])
+        self.assertIn("difficulty", str(e.exception))
+        with self.assertRaises(ValueError):
+            self.app.crawls.set_level(r["id"], 7)
+        self.app.crawls.set_level(r["id"], 2)
+        s = self.app.crawls._summary(r, time.time())
+        self.assertEqual((s["level"], s["tier_label"], s["level_by_hand"]), (2, "D2 Adaptive", True))
+        self.assertEqual(s["proof"]["status"], "verified")                     # the time is still witnessed
+        self.assertIn("difficulty was set by hand", " ".join(s["proof"]["reasons"]))
+        self.app.crawls.set_level(r["id"], 3)                                  # changing your own pick is fine
+        self.app.submit_run(r["id"])
+        body = Site.got[-1][1]
+        self.assertEqual((body["proof"]["tier"], body["run"]["tier"], body["run"]["tier_set_by_hand"]),
+                         ("D3 Fused", "D3 Fused", True))
+        self.assertTrue(any("by hand" in x for x in body["proof"]["verdict"]["reasons"]))
+        self.app.crawls.set_level(r["id"], 2)                                  # after sending: can resend
+        self.assertTrue(r["changed_since_sent"])
+        # a difficulty the log shows can't be changed
+        feed(self.app.crawls, self.char, RUN)
+        with self.assertRaises(ValueError):
+            self.app.crawls.set_level(self.app.crawls.runs[-1]["id"], 4)
+
     def test_snapshot_from_overlay(self):
         feed(self.app.crawls, self.char, RUN)
         r = self.app.crawls.runs[-1]
