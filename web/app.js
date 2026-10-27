@@ -532,7 +532,18 @@ const hms = s => {
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = String(s % 60).padStart(2, '0');
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 };
-const lvlChip = r => (r.category === 'raid' ? '<span class="raid-chip" title="Raid run: ended when the final boss was looted">Raid</span> ' : '') + `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
+// How a run actually ended, in words (the same for the run's details and its leaderboard note).
+function endedHow(r) {
+  const boss = r.boss || r.raid_boss || 'the final boss';
+  if (r.status === 'active') return r.category === 'raid' ? `still running: it ends when ${esc(boss)}'s corpse is looted` : 'still running: it ends at the Reward Chest';
+  if (r.stopped || r.ended_by === 'hand') return 'ended by hand';
+  if (r.ended_by === 'removed') return `by the log line “${esc(r.end_line || 'has been removed from')}”`;
+  if (r.ended_by === 'boss') return `${esc(boss)}'s corpse was looted`;
+  if (r.category === 'raid') return `not ended by ${esc(boss)}'s loot (the log stopped or you left the zone)`;
+  if (r.chest && r.chest.length) return 'first item looted from the Reward Chest';
+  return 'the run timed out or you left the zone';
+}
+const lvlChip = r => (r.category === 'raid' ? '<span class="raid-chip" title="Raid run: timed until the final boss is looted">Raid</span> ' : '') + `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
 const DIFFS = ['D0 Base', 'D1 Awakened', 'D2 Adaptive', 'D3 Fused', 'D4 Refined'];
 // the log didn't show the difficulty: let the player pick it (or change one they picked)
 const levelPicker = r => (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
@@ -698,7 +709,8 @@ async function refreshCrawls() {
           <ul>${r.proof.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
           ${r.status !== 'active' ? `<button class="ghost" data-proof="${r.id}">Export proof file</button>` : ''}</div>
         <div><span>Instance:</span> ${esc(r.raw || '—')}</div>
-        ${r.category === 'raid' ? `<div><span>Raid:</span> ${esc(r.raid || r.zone)} · ended when ${esc(r.boss || 'the final boss')} was looted</div>` : ''}
+        ${r.category === 'raid' ? `<div><span>Raid:</span> ${esc(r.raid || r.zone)} · final boss ${esc(r.boss || r.raid_boss || '?')}</div>` : ''}
+        <div class="wide"><span>How it ended:</span> ${endedHow(r)}</div>
         ${r.level == null || r.level_by_hand ? `<div><span>Difficulty:</span> ${levelPicker(r)}${r.level == null ? ' <span class="muted small">not in the log</span>' : ''}</div>` : ''}
         <div><span>Started:</span> ${dt(r.start)}${r.end ? ` · <span>ended</span> ${dt(r.end)}` : ''}</div>
         <div><span>Inside the instance:</span> ${hms(r.inside)}</div>
@@ -711,7 +723,7 @@ async function refreshCrawls() {
         ${r.status === 'done' ? `<div class="wide lbbox">${r.snapshot ? `<img class="snap" src="/api/crawls/snapshot?id=${r.id}" alt="Crawl timer">` : ''}
           <div><span>Leaderboard:</span> ${lbStatus(r)}</div></div>` : ''}
         ${r.group && r.group.length ? `<div class="wide"><span>Group:</span>${groupHtml(r, true)}</div>` : ''}
-        <div class="wide"><span>Reward chest:</span> ${r.chest.length ? r.chest.map(c => `${esc(c.item)}${c.qty > 1 ? ' ×' + c.qty : ''}`).join(', ') : '—'}</div>
+        ${r.category === 'raid' ? '' : `<div class="wide"><span>Reward chest:</span> ${r.chest.length ? r.chest.map(c => `${esc(c.item)}${c.qty > 1 ? ' ×' + c.qty : ''}`).join(', ') : '—'}</div>`}
         ${r.notes.length ? `<div class="wide"><span>Messages:</span> ${r.notes.map(esc).join(' · ')}</div>` : ''}
         <div class="wide"><button class="ghost del" data-delrun="${r.id}">Delete this run</button></div></div></td></tr>`;
     }).join('')}</table>` : `<div class="muted" style="padding:8px 0">No ${showAll ? '' : 'completed '}crawls ${zsel.value ? 'in ' + esc(zsel.value) + ' ' : ''}yet.</div>`;

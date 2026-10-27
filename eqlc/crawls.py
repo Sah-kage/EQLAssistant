@@ -826,7 +826,7 @@ class Crawls:
             "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]), "armed": r.get("armed"),
             "proof": I.verdict(r),
             "party": self.party(r), "players": self.players(r),
-            "ended_by": r.get("ended_by") or ("hand" if r.get("stopped") else ("chest" if r["status"] == "done" else None)),
+            "ended_by": r.get("ended_by") or ("hand" if r.get("stopped") else ("chest" if r["status"] == "done" and r.get("category") != "raid" else None)),
             "end_line": r.get("end_line"),
             "left_out": sorted(set(r.get("players") or {}) - set(self.players(r))), "stopped": bool(r.get("stopped")),
             "combat": round(combat) if combat is not None else None,
@@ -926,6 +926,6 @@ class Crawls:
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
                         "party": self.party(r), "players": self.players(r), "stopped": bool(r.get("stopped")),
-                        "ended_by": r.get("ended_by"), "boss": r.get("boss")}
+                        "ended_by": r.get("ended_by"), "boss": r.get("boss"), "category": r.get("category") or "crawl"}
             break
         return None

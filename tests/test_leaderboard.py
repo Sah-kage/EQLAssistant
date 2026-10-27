@@ -485,6 +485,20 @@ class SubmitTests(unittest.TestCase):
                           (300, "--You have looted a Gem from Reward Chest.--")])
         self.assertEqual((c3.runs[-1]["status"], c3._summary(c3.runs[-1], T0 + 400)["category"]), ("done", "crawl"))
 
+    def test_raid_ended_by_removed_says_so(self):
+        from eqlc.crawls import Crawls
+        c = Crawls({})
+        feed(c, "Me_x", [(0, "You have entered The Plane of Fear - Solo 1 (Awakened)."), (20, "You have slain a goblin!"),
+                         (600, "Me has been removed from the instance.")])
+        s = c._summary(c.runs[-1], T0 + 700)
+        self.assertEqual((s["category"], s["ended_by"], s["boss"]), ("raid", "removed", "Cazic Thule"))
+        self.assertIn("removed from", s["end_line"])
+        c3 = Crawls({})
+        feed(c3, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!")])
+        r = c3.runs[-1]
+        r.update(status="done", end=T0 + 300)                      # timed out / left, no boss loot
+        self.assertIsNone(c3._summary(r, T0 + 400)["ended_by"])   # never "chest" for a raid
+
     def test_raid_keeps_its_difficulty(self):
         from eqlc.crawls import Crawls
         c = Crawls({})
