@@ -166,9 +166,6 @@ class Crawls:
              "chest": {}, "reward_xp": False, "refund": None, "notes": [],
              "entered": bool(z.get("inst")) and not z.get("from_available"), "completed_at": None,
              "offered": t, "waiting_kill": True, "proof": I.new_proof(history=self._meta is None)}
-        raid, boss = raid_of(r["zone"])
-        if boss:                                         # raid zones time raids: no Reward Chest, the final boss ends it
-            r.update(category="raid", raid=raid, boss=boss)
         self.runs.append(r)
         LOG.debug("crawl run %s set up: %s %s (%s)%s", r["id"], z.get("raw") or z.get("zone"), z.get("tier") or "",
                   char, "" if self._meta else " [from older log lines]")
@@ -468,18 +465,28 @@ class Crawls:
                     r[k] = here[k]
 
     def _chest(self, char, t):
-        """First 'from Reward Chest' line ends a dungeon crawl. Raids have no Reward Chest, so it never ends one."""
+        """The first 'from Reward Chest' line ends a dungeon crawl, in any zone (raids have no Reward Chest)."""
         r = self.current(char)
-        zone = (r or {}).get("zone") or (self.where.get(char) or {}).get("zone")
-        if raid_of(zone)[1]:
-            LOG.debug("Reward Chest line in raid zone %s ignored (raids end at the final boss)", zone)
-            return
         if not r:
-            if self._recent(char, t):
+            prev = self._recent(char, t)
+            if prev and prev.get("ended_by") == "boss":
+                # A boss with a raid's name was looted, then a Reward Chest: it was a dungeon crawl after all,
+                # so it ends here, at the chest.
+                prev.update(category=None, raid=None, boss=None, ended_by="chest")
+                if self.proof_dir:                       # the timer window's picture showed the raid ending: retake it
+                    from . import snapshot as S
+                    try:
+                        os.remove(S.path(self.proof_dir, prev["id"]))
+                    except OSError:
+                        pass
+                r = prev
+                LOG.debug("run %s: Reward Chest after the boss loot, so it's a dungeon crawl", r["id"])
+            elif prev:
                 return                                   # more chest loot from a run that already ended
-            z = self.where.get(char) or {"zone": "Unknown zone", "raw": "", "tier": "", "level": None,
-                                          "mode": "", "inst_id": ""}
-            r = self._new(char, z, t, start_known=False)
+            else:
+                z = self.where.get(char) or {"zone": "Unknown zone", "raw": "", "tier": "", "level": None,
+                                              "mode": "", "inst_id": ""}
+                r = self._new(char, z, t, start_known=False)
         if r.get("waiting_kill"):
             r["waiting_kill"] = False
             r["start_known"] = False                     # no kill seen, so no real start time
@@ -491,6 +498,7 @@ class Crawls:
         r["end"] = t
         r["last"] = t
         r["status"] = "done"
+        r["ended_by"] = "chest"
         LOG.debug("crawl run %s finished at the Reward Chest: %ss, %s kills", r["id"], round(t - r["start"]), r["kills"])
         self.active.pop(char, None)
         self.dirty = True
@@ -826,7 +834,7 @@ class Crawls:
             "waiting_kill": bool(waiting), "offered": r.get("offered", r["start"]), "armed": r.get("armed"),
             "proof": I.verdict(r),
             "party": self.party(r), "players": self.players(r),
-            "ended_by": r.get("ended_by") or ("hand" if r.get("stopped") else ("chest" if r["status"] == "done" and r.get("category") != "raid" else None)),
+            "ended_by": r.get("ended_by") or ("hand" if r.get("stopped") else ("chest" if r["status"] == "done" and r.get("chest") and r.get("category") != "raid" else None)),
             "end_line": r.get("end_line"),
             "left_out": sorted(set(r.get("players") or {}) - set(self.players(r))), "stopped": bool(r.get("stopped")),
             "combat": round(combat) if combat is not None else None,

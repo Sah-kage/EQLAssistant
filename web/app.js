@@ -535,7 +535,7 @@ const hms = s => {
 // How a run actually ended, in words (the same for the run's details and its leaderboard note).
 function endedHow(r) {
   const boss = r.boss || r.raid_boss || 'the final boss';
-  if (r.status === 'active') return r.category === 'raid' ? `still running: it ends when ${esc(boss)}'s corpse is looted` : 'still running: it ends at the Reward Chest';
+  if (r.status === 'active') return r.raid_boss ? `still running: a crawl ends at the Reward Chest, a raid when ${esc(boss)}'s corpse is looted` : 'still running: it ends at the Reward Chest';
   if (r.stopped || r.ended_by === 'hand') return 'ended by hand';
   if (r.ended_by === 'removed') return `by the log line “${esc(r.end_line || 'has been removed from')}”`;
   if (r.ended_by === 'boss') return `${esc(boss)}'s corpse was looted`;
@@ -650,7 +650,7 @@ function crawlNow(d) {
         <div><label>Outside</label><b>${hms(c.outside)}</b></div></div>
       <p class="hint">${c.waiting_kill ? (c.armed === 'zone'
         ? `You entered <code>${esc(c.raw || c.zone)}</code> at ${clock(c.offered)} (no “is now available” line — normal when someone else in your group opened the crawl). The timer starts on your first kill in it`
-        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. ${c.raid_boss ? `This is a raid: it ends when ${esc(c.raid_boss)}'s corpse is looted (raids have no Reward Chest).` : 'It ends when the first item is looted from the Reward Chest.'}</p>`;
+        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. ${c.raid_boss ? `A dungeon crawl ends at the first loot from the Reward Chest; a raid here ends when ${esc(c.raid_boss)}'s corpse is looted.` : 'It ends when the first item is looted from the Reward Chest.'}</p>`;
   }
   if (j) return `<div class="panel-h"><span>${j.stopped ? 'Crawl ended by hand' : j.ended_by === 'removed' ? 'Crawl ended (removed from the instance)' : j.category === 'raid' ? `Raid complete — ${esc(j.boss)} looted` : 'Crawl complete'}${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
       <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${levelPicker(j)} ${partyChip(j)}</div>

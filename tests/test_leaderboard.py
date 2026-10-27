@@ -471,19 +471,26 @@ class SubmitTests(unittest.TestCase):
             doc["chain"] = I.chain(doc["chain"], ln)
         doc["checks"]["lines"] = len(doc["lines"])
         self.assertTrue(I.check_proof(doc)["ok"], I.check_proof(doc))  # time = first kill -> boss loot
-        # raids have no Reward Chest: a chest line in a raid zone neither ends the raid nor starts a run
+        # a dungeon crawl in a raid zone still ends at the Reward Chest
         c2 = Crawls({})
-        feed(c2, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!")])
-        self.assertEqual(c2._summary(c2.runs[-1], T0 + 30)["category"], "raid")   # a raid from the start
-        feed(c2, "Me_x", [(300, "--You have looted a Gem from Reward Chest.--")])
-        self.assertEqual((len(c2.runs), c2.runs[-1]["status"]), (1, "active"))
-        feed(c2, "Me_x", [(500, "--You have looted a Gem from Lady Vox's corpse.--")])
-        self.assertEqual((c2.runs[-1]["status"], c2.runs[-1]["ended_by"], c2.runs[-1]["end"]), ("done", "boss", T0 + 500))
-        # a dungeon crawl elsewhere still ends at the Reward Chest
-        c3 = Crawls({})
-        feed(c3, "Me_x", [(0, "You have entered Unrest 3 (Fused)."), (20, "You have slain a goblin!"),
+        feed(c2, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
                           (300, "--You have looted a Gem from Reward Chest.--")])
-        self.assertEqual((c3.runs[-1]["status"], c3._summary(c3.runs[-1], T0 + 400)["category"]), ("done", "crawl"))
+        s2 = c2._summary(c2.runs[-1], T0 + 400)
+        self.assertEqual((s2["status"], s2["category"], s2["ended_by"], s2["duration"]), ("done", "crawl", "chest", 280))
+        # a crawl whose last boss has a raid boss's name: the boss loot ends it, then the chest makes it a crawl
+        c3 = Crawls({})
+        feed(c3, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
+                          (200, "--Bobbin has looted a Gem from Lady Vox's corpse.--")])
+        self.assertEqual(c3.runs[-1]["ended_by"], "boss")
+        feed(c3, "Me_x", [(260, "--You have looted a Gem from Reward Chest.--")])
+        s3 = c3._summary(c3.runs[-1], T0 + 400)
+        self.assertEqual((len(c3.runs), s3["category"], s3["ended_by"], s3["duration"]), (1, "crawl", "chest", 240))
+        self.assertEqual([b["category"] for b in c3.bests("Me_x")], ["crawl"])
+        # outside raid zones nothing changes
+        c4 = Crawls({})
+        feed(c4, "Me_x", [(0, "You have entered Unrest 3 (Fused)."), (20, "You have slain a goblin!"),
+                          (300, "--You have looted a Gem from Reward Chest.--")])
+        self.assertEqual((c4.runs[-1]["status"], c4.runs[-1]["ended_by"]), ("done", "chest"))
 
     def test_raid_ended_by_removed_says_so(self):
         from eqlc.crawls import Crawls
@@ -491,13 +498,13 @@ class SubmitTests(unittest.TestCase):
         feed(c, "Me_x", [(0, "You have entered The Plane of Fear - Solo 1 (Awakened)."), (20, "You have slain a goblin!"),
                          (600, "Me has been removed from the instance.")])
         s = c._summary(c.runs[-1], T0 + 700)
-        self.assertEqual((s["category"], s["ended_by"], s["boss"]), ("raid", "removed", "Cazic Thule"))
+        self.assertEqual((s["ended_by"], s["raid_boss"]), ("removed", "Cazic Thule"))
         self.assertIn("removed from", s["end_line"])
         c3 = Crawls({})
         feed(c3, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!")])
         r = c3.runs[-1]
         r.update(status="done", end=T0 + 300)                      # timed out / left, no boss loot
-        self.assertIsNone(c3._summary(r, T0 + 400)["ended_by"])   # never "chest" for a raid
+        self.assertIsNone(c3._summary(r, T0 + 400)["ended_by"])   # no chest, no boss: neither
 
     def test_raid_keeps_its_difficulty(self):
         from eqlc.crawls import Crawls

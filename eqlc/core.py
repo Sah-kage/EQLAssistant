@@ -394,6 +394,7 @@ class App:
             self.crawls.dirty = True
         return reply
 
+    crawls_after_done = 120   # = crawls.AFTER_DONE
     SNAP_WAIT = 8          # seconds to wait for the crawl window's picture before sending without it
 
     def auto_submit(self, now=None):
@@ -407,6 +408,8 @@ class App:
             if (r["status"] != "done" or r.get("submitted") or r.get("auto_tried") or r["id"] in self._submitting
                     or not r.get("end") or now - r["end"] > 30 * 60):
                 continue
+            if r.get("ended_by") == "boss" and now - r["end"] < self.crawls_after_done:
+                continue                    # a Reward Chest may still follow (then it was a dungeon crawl)
             mine = (r.get("class_fix") or {}).get(split_char(r["char"])[0])
             if I.verdict(r)["status"] != "verified" or not (mine and len(mine) == 3 or self.my_classes(r["char"])):
                 continue

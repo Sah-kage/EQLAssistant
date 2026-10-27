@@ -597,8 +597,9 @@ class CrawlOverlay(OverlayBase):
         self.stats.config(text=" · ".join(bits))
         pb = c.get("pb")
         if c["state"] == "done":
-            if c.get("id") and not c.get("snap") and c["id"] not in self._snapped:
-                self._snapped.add(c["id"])
+            key = (c.get("id"), c.get("elapsed"), c.get("ended_by"))     # again if a raid turns out to be a crawl
+            if c.get("id") and not c.get("snap") and key not in self._snapped:
+                self._snapped.add(key)
                 self.root.after(800, lambda rid=c["id"]: self._snapshot(rid))   # once the window shows the result
             new = c.get("new_pb")
             odd = c.get("stopped") or c.get("ended_by") == "removed"
