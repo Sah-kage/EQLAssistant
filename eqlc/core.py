@@ -829,6 +829,7 @@ class App:
                 self.motes.tick(c)
             self.crawls.tick()
             self.auto_submit()
+            self.buffs.tick()
             if time.time() - self._spellfile_checked > 60:
                 self._spellfile_checked = time.time()
                 self.buffs.book.use_game_file(self.cfg.get("log_dir"))

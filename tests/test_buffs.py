@@ -98,7 +98,10 @@ class BuffTests(unittest.TestCase):
         b = make(30)
         feed(b, [(0, "Bobbin is surrounded by a brief lupine aura."),                     # someone else's spell
                  (5, "You begin casting Spirit of Wolf."), (60, "Bobbin is surrounded by a brief lupine aura.")])
-        self.assertEqual(b.view("Me_x", now=T0 + 61)["buffs"], [])                       # too long after the cast
+        rows = b.view("Me_x", now=T0 + 61)["buffs"]                                      # too long after the cast:
+        self.assertEqual([(r["spell"], r["target"]) for r in rows], [("Spirit of Wolf", None)])   # timed, no target
+        self.assertEqual(b.view("Me_x", now=T0 + 61)["casts"][0]["result"],
+                         "timed with no target (no landing message seen)")
 
     def test_level_from_log_and_custom_spell(self):
         b = Buffs({})
@@ -108,6 +111,7 @@ class BuffTests(unittest.TestCase):
         self.assertEqual(b.view("Me_x", now=T0 + 6)["buffs"][0]["secs"], 12 * 30 * 6)
         b.set_custom("Blessing of the Page", 1800)
         feed(b, [(10, "You begin casting Blessing of the Page.")])
+        b.tick(now=T0 + 15)                                         # (the app calls this every second)
         r = [x for x in b.view("Me_x", now=T0 + 20)["buffs"] if x["spell"] == "Blessing of the Page"][0]
         self.assertEqual((r["secs"], r["target"]), (1800, None))
         feed(b, [(30, "You begin casting Blessing of the Page."), (31, "Your Blessing of the Page spell is interrupted.")])
@@ -140,9 +144,39 @@ class BuffTests(unittest.TestCase):
             b.level_of = lambda c: 2
             feed(b, [(0, "You begin casting Legend Ward."), (3, "Bobbin is warded.")])
             self.assertEqual(b.view("Me_x", now=T0 + 4)["buffs"][0]["secs"], 60 * 6)
-            self.assertFalse(book.get("Spirit of Wolf"))           # the game's file replaces the built-in list
+            self.assertTrue(book.get("Spirit of Wolf"))            # spells the game's file lacks: the built-in list
             os.remove(os.path.join(tmp, "spells_us.txt"))
             self.assertFalse(book.use_game_file(logs))
+            self.assertTrue(book.get("Spirit of Wolf"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_landing_line_matched_loosely_and_casts_logged(self):
+        b = make(30)
+        feed(b, [(0, "You begin casting Spirit of Wolf."), (2, "Bobbin says, 'hi'"),
+                 (3, "Something odd happens."),
+                 (4, "bobbin is surrounded by a  brief lupine aura")])                     # case, spacing, no full stop
+        v = b.view("Me_x", now=T0 + 5)
+        self.assertEqual([(r["spell"], r["target"]) for r in v["buffs"]], [("Spirit of Wolf", "bobbin")])
+        self.assertEqual((v["casts"][0]["result"], v["casts"][0]["after"]), ("landed on bobbin", ["Something odd happens."]))
+        feed(b, [(10, "You begin casting Fire Bolt."), (14, "A gnoll was hit by non-melee for 50 points of damage.")])
+        b.tick(now=T0 + 40)
+        self.assertIn("not a spell that lasts", b.view("Me_x", now=T0 + 40)["casts"][0]["result"])
+        feed(b, [(50, "You begin casting Root."), (51, "Your spell is interrupted.")])
+        self.assertEqual(b.view("Me_x", now=T0 + 52)["casts"][0]["result"], "interrupted")
+
+    def test_newer_spell_file_layout_is_not_used(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(tmp, "Logs"))
+            with open(os.path.join(tmp, "spells_us.txt"), "w") as fh:          # numbers where the messages would be
+                for i in range(400):
+                    fh.write("^".join([str(i), f"Spell {i}"] + [str((i * 7 + k) % 13) for k in range(230)]) + "\n")
+            book = SpellBook()
+            self.assertFalse(book.use_game_file(os.path.join(tmp, "Logs")))
+            self.assertEqual(book.source, "built-in")
+            self.assertIn("isn't in a layout", book.file_note)
+            self.assertFalse(book.use_game_file(os.path.join(tmp, "Logs")))   # and stays that way
             self.assertTrue(book.get("Spirit of Wolf"))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

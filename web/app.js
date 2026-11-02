@@ -1352,12 +1352,16 @@ async function refreshBuffs(badgeOnly) {
   $('#buff-hint').dataset.src = d.source;
   $('#buff-custom').innerHTML = d.custom.length ? d.custom.map(c => `<div class="need"><span>${esc(c.name)} <span class="muted small">${c.good ? 'buff' : 'debuff'}</span></span>
       <span class="c">${fmtLeft(c.secs)} <button class="ghost tiny" data-buffcdel="${esc(c.name)}" title="Forget this duration">×</button></span></div>`).join('') : '';
-  const src = d.source === 'game' ? `Spell durations come from the game's own spell file (${esc(d.file)}).`
-    : 'Spell durations come from the built-in classic spell list. EverQuest Legends\' own spells may differ or be missing: put the game\'s spells_us.txt next to your Logs folder, or set a duration below.';
+  const src = d.source === 'game' ? `Spell durations come from the game's own spell file (${esc(d.file)}), plus the built-in classic list for spells it doesn't have.`
+    : d.file_note ? `Spell durations come from the built-in classic spell list (${esc(d.file_note)}).` : 'Spell durations come from the built-in classic spell list. EverQuest Legends\' own spells may differ or be missing: put the game\'s spells_us.txt next to your Logs folder, or set a duration below.';
   $('#buff-look-out').innerHTML = (d.lookup ? (d.lookup.versions.length ? d.lookup.versions.map(v => `<div class="bver"><b class="${v.good ? 'green' : 'red'}">${esc(v.name)}</b>${v.player ? '' : ' <span class="muted small">(not a player version)</span>'}
       — ${v.secs == null ? 'permanent' : `<b>${fmtLeft(v.secs)}</b> at level ${d.lookup.level}`}${v.max_secs && v.max_secs !== v.secs ? ` <span class="muted">(${fmtLeft(v.max_secs)} at most)</span>` : ''}
       ${v.other ? `<div class="muted small">On others: <q>Bobbin${esc(v.other)}</q></div>` : ''}${v.you ? `<div class="muted small">On you: <q>${esc(v.you)}</q></div>` : ''}</div>`).join('')
       : `<div class="muted">“${esc(d.lookup.spell)}” isn't in the spell list${d.lookup.custom ? ` — you set it to ${fmtLeft(d.lookup.custom.secs)}` : '. Set a duration for it on the right.'}</div>`) : '') + `<p class="muted small">${src}</p>`;
+  $('#buff-casts').innerHTML = d.casts.length ? `<table class="bcasts"><tr><th>When</th><th>Spell</th><th>What happened</th><th>Next lines in the log</th></tr>
+    ${d.casts.map(c => `<tr><td class="muted">${new Date(c.t * 1000).toLocaleTimeString()}</td><td>${esc(c.spell)}${c.known ? '' : ' <span class="muted small">(not in list)</span>'}</td>
+      <td>${esc(c.result || 'casting…')}</td><td class="muted small">${c.after.map(esc).join('<br>')}</td></tr>`).join('')}</table>`
+    : '<div class="muted" style="padding:6px 0">No casts seen since the app started. Casts show up here as “You begin casting …” lines arrive in your log.</div>';
   $$('[data-buffdel]').forEach(b => b.onclick = async () => { await post('/api/buffs/clear', {char, id: +b.dataset.buffdel}); refreshBuffs(); });
   $$('[data-buffcdel]').forEach(b => b.onclick = async () => { await post('/api/buffs/custom', {spell: b.dataset.buffcdel, secs: null}); refreshBuffs(); });
 }

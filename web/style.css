@@ -491,3 +491,5 @@ tr.bdone td { opacity:.5; }
 .bver { border-top:1px solid var(--line); padding:6px 0; font-size:13px; }
 .bver q { color:var(--dim); quotes:"“" "”"; }
 table.bufft th:nth-child(2), table.bufft td:nth-child(2) { text-align:left; color:var(--dim); }
+table.bcasts td { vertical-align:top; }
+table.bcasts th, table.bcasts td { text-align:left; }
