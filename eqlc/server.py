@@ -121,6 +121,8 @@ def make_handler(app):
                              motes=app.motes.view(char) if char else None,
                              timers=app.timers.view(char) if (q.get("kind") != "dps" or app.cfg.get("timers_on_overlay", True)) else [],
                              crawl=app.crawls.overlay(char) if char and (q.get("kind") != "dps" or app.cfg.get("crawl_on_overlay", True)) else None)
+                    if q.get("kind") == "buffs":
+                        o["buffs"] = app.buffs_overlay(char)
                     if q.get("kind") in app.OVERLAY_ON_KEY:
                         o["look"] = app.overlay_look(q["kind"])
                     return self._json(o)
@@ -129,7 +131,8 @@ def make_handler(app):
                         dict(app.overlay_look(k), kind=k, on=bool(app.cfg.get(key, True)), running=overlay_running(k))
                         for k, key in app.OVERLAY_ON_KEY.items()],
                         "crawl_on_overlay": app.cfg.get("crawl_on_overlay", True),
-                        "timers_on_overlay": app.cfg.get("timers_on_overlay", True)})
+                        "timers_on_overlay": app.cfg.get("timers_on_overlay", True),
+                        "buffs_overlay": app.buffs_overlay(None)["show"]})
                 if p == "/api/fights":
                     lst = app.tracker(char).list(int(q.get("limit", 200))) if char else []
                     return self._json({"char": char, "fights": lst})
@@ -161,6 +164,16 @@ def make_handler(app):
                             v["detail"] = app.deaths.get(char, int(q["id"]))
                         except ValueError:
                             v["detail"] = None
+                    return self._json(v)
+                if p == "/api/buffs":
+                    if not char:
+                        return self._json({"char": None})
+                    v = app.buffs.view(char)
+                    v["overlay"] = dict(app.overlay_look("buffs"), on=bool(app.cfg.get("buffs_window_on_start")),
+                                        running=overlay_running("buffs"), show=app.buffs_overlay(None)["show"])
+                    v["level_set"] = (app.cfg.get("buff_levels") or {}).get(char)
+                    if q.get("lookup"):
+                        v["lookup"] = app.buffs.lookup(q["lookup"], char)
                     return self._json(v)
                 if p == "/api/races":
                     return self._json(app.races.view(char))
@@ -433,6 +446,24 @@ def make_handler(app):
                     rows = app.exalts.rows(char)[0] or []
                 n = app.exalts.lookup([r["name"] for r in rows], force=True)
                 return self._json({"ok": True, "looking_up": n})
+            if p.startswith("/api/buffs/"):
+                try:
+                    with app.lock:
+                        char = body.get("char") or app.char()
+                        if p == "/api/buffs/clear":
+                            app.buffs.clear(char, int(body["id"]) if body.get("id") else None)
+                        elif p == "/api/buffs/level":
+                            app.set_buff_level(char, body.get("level"))
+                        elif p == "/api/buffs/custom":
+                            secs = body.get("secs")
+                            app.buffs.set_custom(str(body.get("spell") or ""), float(secs) if secs not in (None, "") else None,
+                                                 body.get("good", True))
+                        else:
+                            return self._json({"ok": False, "error": "unknown"}, 404)
+                    app.save_state(force=True)
+                    return self._json({"ok": True})
+                except (ValueError, TypeError) as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
             if p in ("/api/deaths/delete", "/api/deaths/clear"):
                 with app.lock:
                     char = body.get("char") or app.char()

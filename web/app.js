@@ -1311,11 +1311,86 @@ $('#inv-file').onchange = async e => {
   if (tab === 'sky') refreshSky(); else refreshQuests(true);
 };
 
+// ---------- buffs ----------
+const fmtLeft = s => s == null ? 'permanent' : (s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+function buffRows(list, good) {
+  if (!list.length) return `<div class="muted" style="padding:6px 0">${good ? 'No buffs running. Cast one and it shows up here.' : 'No debuffs running.'}</div>`;
+  return `<table class="bufft"><tr><th>Spell</th><th>On</th><th>Time left</th><th class="num">Lasts</th><th></th></tr>
+    ${list.slice().sort((a, b) => (a.done - b.done) || ((a.left ?? 1e9) - (b.left ?? 1e9))).map(r => {
+      const cls = r.done ? '' : (r.left != null && r.left <= 10 ? 'warn' : r.left != null && r.left <= 30 ? 'near' : '');
+      return `<tr class="${r.done ? 'bdone' : ''}"><td>${esc(r.spell)}</td><td>${esc(r.target || '?')}</td>
+        <td class="left"><div class="btime ${good ? '' : 'debuff'} ${cls}"><span class="track"><i style="width:${r.done ? 0 : (r.pct ?? 100)}%"></i></span>
+          <b>${r.done ? esc(r.why || 'ended') : fmtLeft(r.left)}</b></div></td>
+        <td class="num muted" title="${esc(r.how || '')}">${r.secs ? fmtLeft(r.secs) : '—'}</td>
+        <td><button class="ghost tiny" data-buffdel="${r.id}" title="Remove this timer">×</button></td></tr>`;
+    }).join('')}</table>`;
+}
+let buffLook = '';
+async function refreshBuffs(badgeOnly) {
+  const d = await get('/api/buffs?' + q() + (buffLook && !badgeOnly ? '&lookup=' + encodeURIComponent(buffLook) : ''));
+  if (!d || !d.char) { if (!badgeOnly) $('#buff-list').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
+  const live = d.buffs.filter(r => !r.done).length + d.debuffs.filter(r => !r.done).length;
+  $('#buff-badge').hidden = !live || tab === 'buffs';
+  $('#buff-badge').textContent = live;
+  if (badgeOnly) return;
+  $('#buff-list').innerHTML = buffRows(d.buffs, true);
+  $('#debuff-list').innerHTML = buffRows(d.debuffs, false);
+  $('#buff-n').textContent = d.buffs.filter(r => !r.done).length || '';
+  $('#debuff-n').textContent = d.debuffs.filter(r => !r.done).length || '';
+  $('#buff-recent').innerHTML = d.recent.length ? `<h3>Just now</h3>${d.recent.slice().reverse().map(r => `<div class="need"><span>${esc(r.spell || 'Spell')}</span><span class="c red">${esc(r.what)}</span></div>`).join('')}` : '';
+  $('#buff-casting').textContent = d.casting ? `Casting ${d.casting}…` : '';
+  const lv = $('#buff-level');
+  if (document.activeElement !== lv) lv.value = d.level_set || '';
+  $('#buff-level-from').textContent = d.level_set ? 'set here' : d.level_from === 'set' ? `${d.level}, from your last /who` : d.level_from === 'log' ? `${d.level}, from your log` : `using ${d.level} (not seen in the log: type /who or set it)`;
+  const o = d.overlay;
+  $('#buff-ov-on').checked = o.on;
+  $('#buff-ov-state').textContent = o.running ? '● showing' : o.on ? 'on — not showing' : 'off';
+  $('#buff-ov-state').className = 'ov-state' + (o.running ? ' run' : '');
+  const a = $('#buff-ov-alpha');
+  if (document.activeElement !== a) { a.value = Math.round(o.alpha * 100); $('#buff-ov-alpha-v').textContent = a.value + '%'; }
+  $$('[data-buffshow]').forEach(c => { c.checked = !!o.show[c.dataset.buffshow]; });
+  $('#buff-hint').dataset.src = d.source;
+  $('#buff-custom').innerHTML = d.custom.length ? d.custom.map(c => `<div class="need"><span>${esc(c.name)} <span class="muted small">${c.good ? 'buff' : 'debuff'}</span></span>
+      <span class="c">${fmtLeft(c.secs)} <button class="ghost tiny" data-buffcdel="${esc(c.name)}" title="Forget this duration">×</button></span></div>`).join('') : '';
+  const src = d.source === 'game' ? `Spell durations come from the game's own spell file (${esc(d.file)}).`
+    : 'Spell durations come from the built-in classic spell list. EverQuest Legends\' own spells may differ or be missing: put the game\'s spells_us.txt next to your Logs folder, or set a duration below.';
+  $('#buff-look-out').innerHTML = (d.lookup ? (d.lookup.versions.length ? d.lookup.versions.map(v => `<div class="bver"><b class="${v.good ? 'green' : 'red'}">${esc(v.name)}</b>${v.player ? '' : ' <span class="muted small">(not a player version)</span>'}
+      — ${v.secs == null ? 'permanent' : `<b>${fmtLeft(v.secs)}</b> at level ${d.lookup.level}`}${v.max_secs && v.max_secs !== v.secs ? ` <span class="muted">(${fmtLeft(v.max_secs)} at most)</span>` : ''}
+      ${v.other ? `<div class="muted small">On others: <q>Bobbin${esc(v.other)}</q></div>` : ''}${v.you ? `<div class="muted small">On you: <q>${esc(v.you)}</q></div>` : ''}</div>`).join('')
+      : `<div class="muted">“${esc(d.lookup.spell)}” isn't in the spell list${d.lookup.custom ? ` — you set it to ${fmtLeft(d.lookup.custom.secs)}` : '. Set a duration for it on the right.'}</div>`) : '') + `<p class="muted small">${src}</p>`;
+  $$('[data-buffdel]').forEach(b => b.onclick = async () => { await post('/api/buffs/clear', {char, id: +b.dataset.buffdel}); refreshBuffs(); });
+  $$('[data-buffcdel]').forEach(b => b.onclick = async () => { await post('/api/buffs/custom', {spell: b.dataset.buffcdel, secs: null}); refreshBuffs(); });
+}
+const buffOv = async body => { await post('/api/overlays/set', Object.assign({kind: 'buffs'}, body)); setTimeout(refreshBuffs, 700); };
+$('#buff-ov-on').onchange = e => buffOv({on: e.target.checked});
+$('#buff-ov-alpha').oninput = e => { $('#buff-ov-alpha-v').textContent = e.target.value + '%'; };
+$('#buff-ov-alpha').onchange = e => buffOv({alpha: e.target.value / 100});
+$('#buff-ov-reset').onclick = () => buffOv({reset: true});
+$$('[data-buffshow]').forEach(c => c.onchange = () => buffOv({show: {[c.dataset.buffshow]: c.checked}}));
+$('#buff-level').onchange = async e => {
+  const r = await post('/api/buffs/level', {char, level: e.target.value ? +e.target.value : null});
+  if (r && !r.ok) alert(r.error);
+  refreshBuffs();
+};
+$('#buff-clear').onclick = async () => { if (confirm('Remove every buff and debuff timer for this character?')) { await post('/api/buffs/clear', {char}); refreshBuffs(); } };
+const doLook = () => { buffLook = $('#buff-look').value.trim(); refreshBuffs(); };
+$('#buff-look-go').onclick = doLook;
+$('#buff-look').onkeydown = e => { if (e.key === 'Enter') doLook(); };
+$('#buff-c-add').onclick = async () => {
+  const name = $('#buff-c-name').value.trim(), min = parseFloat($('#buff-c-min').value);
+  if (!name || !(min > 0)) { alert('Type the spell name and how many minutes it lasts.'); return; }
+  const r = await post('/api/buffs/custom', {spell: name, secs: Math.round(min * 60), good: $('#buff-c-good').value === '1'});
+  if (r && !r.ok) { alert(r.error); return; }
+  $('#buff-c-name').value = ''; $('#buff-c-min').value = '';
+  refreshBuffs();
+};
+
 // ---------- overlays ----------
 const OV_INFO = {
   dps: {name: 'DPS overlay', desc: 'Current fight DPS, last-10 average, a mini chart, the dungeon crawl timer and respawn timers. Double-click it for your fight breakdown.'},
   motes: {name: 'Motes window', desc: 'Motes looted since the app was opened, split by tier, with per-hour rates.'},
   crawl: {name: 'Dungeon crawl timer', desc: 'Live crawl time from “… is now available to you” to the Reward Chest, against your best for that zone and difficulty, with kills, deaths and motes.'},
+  buffs: {name: 'Buff & debuff timers', desc: 'Your buffs and debuffs with who they\'re on and the time left. Each new one is added at the bottom, so the window grows downwards as you cast.'},
 };
 let ovBusy = 0;
 async function refreshOverlays(force) {
@@ -1327,7 +1402,10 @@ async function refreshOverlays(force) {
   refreshOverlays.sig = sig;
   $('#ov-cards').innerHTML = d.overlays.map(o => {
     const info = OV_INFO[o.kind] || {name: o.kind, desc: ''};
-    const extra = o.kind === 'dps' ? `
+    const extra = o.kind === 'buffs' ? `
+        <label class="chk"><input type="checkbox" data-ovshowb="buffs" ${d.buffs_overlay.buffs ? 'checked' : ''}> Buffs</label>
+        <label class="chk"><input type="checkbox" data-ovshowb="self" ${d.buffs_overlay.self ? 'checked' : ''}> Buffs on you</label>
+        <label class="chk"><input type="checkbox" data-ovshowb="debuffs" ${d.buffs_overlay.debuffs ? 'checked' : ''}> Debuffs</label>` : o.kind === 'dps' ? `
         <label class="chk"><input type="checkbox" data-ovopt="crawl_on_overlay" ${d.crawl_on_overlay ? 'checked' : ''}> Also show the crawl timer on this overlay</label>
         <label class="chk"><input type="checkbox" data-ovopt="timers_on_overlay" ${d.timers_on_overlay ? 'checked' : ''}> Show respawn timers</label>` : '';
     return `<div class="panel ov-card ${o.on ? '' : 'off'}" data-kind="${o.kind}">
@@ -1350,6 +1428,7 @@ async function refreshOverlays(force) {
   });
   $$('[data-ovlock]').forEach(c => c.onchange = async () => { await set(c, {locked: c.checked}); });
   $$('[data-ovopt]').forEach(c => c.onchange = async () => { await set(c, {[c.dataset.ovopt]: c.checked}); });
+  $$('[data-ovshowb]').forEach(c => c.onchange = async () => { await set(c, {show: {[c.dataset.ovshowb]: c.checked}}); });
   $$('[data-ovshow]').forEach(b => b.onclick = async () => { await set(b, {on: true}); setTimeout(() => refreshOverlays(true), 800); });
   $$('[data-ovreset]').forEach(b => b.onclick = async () => { await set(b, {reset: true}); refreshOverlays(true); });
 }
@@ -1510,6 +1589,8 @@ async function refresh() {
     if (tab === 'exalts' && (n % 10 === 0 || !$('#ex-table').innerHTML)) await refreshExalts();
     if (tab === 'deaths' && (n % 2 === 0 || !$('#death-list').innerHTML)) await refreshDeaths();
     else if (n % 4 === 0) await refreshDeaths(true);
+    if (tab === 'buffs') await refreshBuffs();
+    else if (n % 5 === 0) await refreshBuffs(true);
     if (tab === 'raids' && (n % 2 === 0 || !$('#raid-groups').innerHTML)) await refreshRaids();
     if (tab === 'quests' && (n % 5 === 0 || !$('#q-list').innerHTML)) await refreshQuests();
     if (tab === 'factions' && (n % 3 === 0 || !$('#f-table').innerHTML)) await refreshFactions();

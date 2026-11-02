@@ -34,6 +34,9 @@ DEFAULTS = {
     "overlay_on_start": True,     # open the in-game DPS overlay when the app starts
     "motes_window_on_start": True,  # open the in-game motes window when the app starts
     "crawl_window_on_start": True,  # open the in-game dungeon crawl timer window when the app starts
+    "buffs_window_on_start": False, # open the in-game buff / debuff timer window when the app starts
+    "buffs_overlay": {"buffs": True, "debuffs": True, "self": True},   # what the buff window shows
+    "buff_levels": {},            # character id -> your level for buff durations (blank: from the log)
     "timers": [],                 # [{"mob", "minutes", "variance", "zone"}] respawn timer rules
     "use_browser": False,         # open the dashboard in the web browser instead of the app window
     "crawl_on_overlay": True,     # show the live dungeon crawl timer on the DPS overlay
@@ -152,6 +155,10 @@ class App:
         self.quests = Quests(self.state, self.sky)
         self.races = Races(self.state, self.factions)
         self.deaths = DeathRecap(self.state)
+        from .buffs import Buffs
+        self.buffs = Buffs(self.state)
+        self.buffs.level_of = self._buff_level
+        self._spellfile_checked = 0
         from .exalts import Exalts
         self.exalts = Exalts(self.state, self.sky, lambda char: self.my_classes(char))
         from .updates import Updates
@@ -191,7 +198,8 @@ class App:
                 self.trackers.clear()
 
     # -- overlays ------------------------------------------------------------
-    OVERLAY_ON_KEY = {"dps": "overlay_on_start", "motes": "motes_window_on_start", "crawl": "crawl_window_on_start"}
+    OVERLAY_ON_KEY = {"dps": "overlay_on_start", "motes": "motes_window_on_start", "crawl": "crawl_window_on_start",
+                      "buffs": "buffs_window_on_start"}
     LOOK_DEFAULT = {"alpha": 0.85, "locked": False, "scale": 1.0, "rev": 0}
 
     def overlay_look(self, kind):
@@ -217,6 +225,10 @@ class App:
             for k in ("crawl_on_overlay", "timers_on_overlay"):
                 if k in body:
                     self.cfg[k] = bool(body[k])
+            if kind == "buffs" and isinstance(body.get("show"), dict):
+                show = dict(DEFAULTS["buffs_overlay"], **self.cfg.get("buffs_overlay", {}))
+                show.update({k: bool(v) for k, v in body["show"].items() if k in show})
+                self.cfg["buffs_overlay"] = show
             self.save_cfg()
             return look
 
@@ -274,6 +286,38 @@ class App:
                 info["warning"] = (f"Your last /who shows {'/'.join(w['classes'])}, which isn't in the classes picked "
                                    f"here. If you changed loadout, pick your classes again.")
         return info
+
+    def _buff_level(self, char):
+        """Your level for buff durations: set on the Buffs tab, else your last /who."""
+        lv = (self.cfg.get("buff_levels") or {}).get(char)
+        if lv:
+            return int(lv)
+        name, server = split_char(char)
+        w = self.crawls.classes.who(server or "-", name)
+        return w.get("level") if w and w.get("level") else None
+
+    def set_buff_level(self, char, level):
+        if not char:
+            raise ValueError("No character")
+        with self.lock:
+            lv = self.cfg.setdefault("buff_levels", {})
+            if level in (None, "", 0):
+                lv.pop(char, None)
+            else:
+                level = int(level)
+                if not 1 <= level <= 100:
+                    raise ValueError("Level must be 1 to 100")
+                lv[char] = level
+            self.save_cfg()
+
+    def buffs_overlay(self, char):
+        """What the buff window shows: running timers (and ones that just ended), oldest first."""
+        show = dict(DEFAULTS["buffs_overlay"], **self.cfg.get("buffs_overlay", {}))
+        v = self.buffs.view(char) if char else {"buffs": [], "debuffs": [], "recent": [], "casting": None}
+        rows = [r for r in v["buffs"] if show["buffs"] and (show["self"] or r["target"] != "You")]
+        rows += [r for r in v["debuffs"] if show["debuffs"]]
+        rows.sort(key=lambda r: (r["start"], r["id"]))
+        return {"rows": rows, "recent": v["recent"], "casting": v["casting"], "show": show}
 
     def my_classes(self, char):
         """Your three classes for a character: picked in Settings, or a newer /who that lists all three."""
@@ -534,6 +578,7 @@ class App:
                         t, ev = r
                         if dps_ok:
                             self.deaths.process(char, t, ev, line, self.zone.get(char))
+                            self.buffs.process(char, t, ev, line)
                         if sky_ok:
                             self.motes.process_line(char, t, line)
                             self.sky.process_line(char, t, line)
@@ -784,11 +829,15 @@ class App:
                 self.motes.tick(c)
             self.crawls.tick()
             self.auto_submit()
+            if time.time() - self._spellfile_checked > 60:
+                self._spellfile_checked = time.time()
+                self.buffs.book.use_game_file(self.cfg.get("log_dir"))
         self.status = "ok"
 
     def save_state(self, force=False):
         self.timers.prune()
-        dirty = (self.sky.dirty or self.motes.dirty or self.timers.dirty or self.crawls.dirty or
+        self.buffs.prune()
+        dirty = (self.buffs.dirty or self.sky.dirty or self.motes.dirty or self.timers.dirty or self.crawls.dirty or
                  self.factions.dirty or self.raids.dirty or self.quests.dirty or self.races.dirty or self.deaths.dirty
                  or self.exalts.dirty)
         if force or (dirty and time.time() - self._last_save > 5):
@@ -801,6 +850,7 @@ class App:
                 self.factions.dirty = self.raids.dirty = self.quests.dirty = self.races.dirty = False
                 self.deaths.dirty = False
                 self.exalts.dirty = False
+                self.buffs.dirty = False
             self._last_save = time.time()
 
     def run(self):

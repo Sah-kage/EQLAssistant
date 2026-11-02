@@ -4,6 +4,7 @@ Two windows, each its own process:
     dps    current fight DPS, last-10 average, respawn timers
     motes  motes collected this session, split by tier
     crawl  dungeon crawl timer against your personal best
+    buffs  your buffs and debuffs with time left (grows downwards as you cast more)
 
 Opened by EQL Assistant (automatically or from the Overlays tab) and closed
 when the app closes. Drag to move. Drag the corner grip (or Ctrl + mouse wheel)
@@ -632,7 +633,83 @@ class CrawlOverlay(OverlayBase):
             self.pb.config(text="first timed run" if c.get("start_known", True) else "start not seen", fg=DIM)
 
 
-KINDS = {"dps": DpsOverlay, "motes": MotesOverlay, "crawl": CrawlOverlay}
+class BuffsOverlay(OverlayBase):
+    """Your buffs and debuffs with time left. A new one is added at the bottom, so the window grows downwards."""
+    kind = "buffs"
+    default_pos = (40, 460)
+    BAR_W = 120
+
+    def build(self, f):
+        self.title = self.label(f, "BUFFS", DIM, 8, True, row=0, column=0, columnspan=4, sticky="w")
+        self.cast = self.label(f, "", SKY, 8, row=1, column=0, columnspan=4, sticky="w")
+        self.rows = tk.Frame(f, bg=BG)
+        self.rows.grid(row=2, column=0, columnspan=4, sticky="we", pady=(2, 0))
+        self._sig = None
+        self._cells = {}
+
+    def waiting(self):
+        self.title.config(text="BUFFS · waiting for app…")
+
+    @staticmethod
+    def _left(r):
+        if r["done"]:
+            return r.get("why") or "ended"
+        if r["left"] is None:
+            return "permanent"
+        return clock(r["left"])
+
+    def render(self, d):
+        b = d.get("buffs")
+        if b is None:
+            return
+        self.title.config(text=f"BUFFS · {char_label(d.get('char')).upper()}")
+        self.cast.config(text=f"casting {b['casting']}…" if b.get("casting") else "")
+        if not b.get("casting"):
+            self.cast.grid_remove()
+        else:
+            self.cast.grid()
+        rows = b["rows"]
+        sig = [r["id"] for r in rows]
+        if sig != self._sig:
+            for w in self.rows.winfo_children():
+                w.destroy()
+            self._cells = {}
+            for i, r in enumerate(rows):
+                col = GREEN if r["good"] else RED
+                name = self.label(self.rows, r["spell"], col, 9, True, row=i, column=0, sticky="w")
+                tgt = self.label(self.rows, r["target"] or "?", DIM, 8, row=i, column=1, sticky="w", padx=(8, 0))
+                bar = tk.Canvas(self.rows, width=self.px(self.BAR_W), height=self.px(5), bg="#21262d",
+                                highlightthickness=0, bd=0)
+                bar.grid(row=i, column=2, sticky="w", padx=(10, 0))
+                left = self.label(self.rows, "", FG, 9, True, row=i, column=3, sticky="e", padx=(8, 0))
+                self._cells[r["id"]] = (name, tgt, bar, left)
+            if not rows:
+                self.label(self.rows, "no buffs or debuffs running", DIM, 8, row=0, column=0, columnspan=4, sticky="w")
+            self.rows.grid_columnconfigure(3, weight=1)
+            self.bind_all_children(self.rows)
+            self._sig = sig
+        for r in rows:
+            cells = self._cells.get(r["id"])
+            if not cells:
+                continue
+            name, tgt, bar, left = cells
+            secs = r["left"]
+            warn = r["done"] or (secs is not None and secs <= 10)
+            near = secs is not None and secs <= 30
+            left.config(text=self._left(r), fg=DIM if r["done"] else (RED if warn else (GOLD if near else FG)))
+            name.config(fg=DIM if r["done"] else (GREEN if r["good"] else RED))
+            bar.delete("all")
+            pct = 0 if r["done"] else (100 if r["pct"] is None else r["pct"])
+            w = self.px(self.BAR_W) * pct / 100
+            if w > 0:
+                bar.create_rectangle(0, 0, w, self.px(5), width=0,
+                                     fill=(RED if warn else GOLD if near else (GREEN if r["good"] else "#d2a8ff")))
+
+    def on_scale(self):
+        self._sig = None
+
+
+KINDS = {"dps": DpsOverlay, "motes": MotesOverlay, "crawl": CrawlOverlay, "buffs": BuffsOverlay}
 
 
 def run(url="http://127.0.0.1:7377", kind="dps"):

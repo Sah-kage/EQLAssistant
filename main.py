@@ -103,6 +103,8 @@ def main():
             open_overlay_window(url, "motes")
         if app.cfg.get("crawl_window_on_start", True):
             open_overlay_window(url, "crawl")
+        if app.cfg.get("buffs_window_on_start", False):
+            open_overlay_window(url, "buffs")
 
     def shutdown():
         logs.stage("closing")

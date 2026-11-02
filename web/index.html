@@ -14,6 +14,7 @@
     <button data-tab="parser" class="on">DPS</button>
     <button data-tab="crawls">Crawls</button>
     <button data-tab="deaths">Deaths <span id="death-badge" class="nbadge" hidden></span></button>
+    <button data-tab="buffs">Buffs <span id="buff-badge" class="nbadge dim" hidden></span></button>
     <button data-tab="raids">Raids <span id="raid-badge" class="nbadge dim" hidden></span></button>
     <button data-tab="timers">Timers <span id="timer-badge" class="nbadge" hidden></span></button>
     <button data-tab="quests">Class Quests</button>
@@ -142,6 +143,49 @@
     </div>
     <p class="hint">A recap covers the last minute before each death: every hit, miss, spell and damage-over-time tick on you, heals you got,
       spells you resisted and stuns. The log has no hit point numbers, so it shows damage and heals rather than your health bar.</p>
+  </section>
+
+  <section id="tab-buffs" class="tab">
+    <div class="panel buff-top">
+      <div class="buff-ctl">
+        <div><label>Your level <input type="number" id="buff-level" min="1" max="100" placeholder="auto"></label>
+          <span class="muted small" id="buff-level-from"></span></div>
+        <div class="buff-ov">
+          <span class="ov-name">Overlay</span>
+          <label class="switch" title="Show the buff window over the game"><input type="checkbox" id="buff-ov-on"><i></i></label>
+          <span class="ov-state" id="buff-ov-state"></span>
+          <span class="ov-row"><span>Opacity</span><input type="range" min="20" max="100" step="5" id="buff-ov-alpha"><b id="buff-ov-alpha-v"></b></span>
+          <label class="chk"><input type="checkbox" data-buffshow="buffs"> Buffs</label>
+          <label class="chk"><input type="checkbox" data-buffshow="self"> Buffs on you</label>
+          <label class="chk"><input type="checkbox" data-buffshow="debuffs"> Debuffs</label>
+          <button class="ghost tiny" id="buff-ov-reset" title="Put the window back in its starting place and size">Reset position</button>
+        </div>
+      </div>
+      <div id="buff-casting" class="muted small"></div>
+    </div>
+    <div class="split buffs">
+      <div class="panel"><div class="panel-h"><span>Buffs <span class="muted" id="buff-n"></span></span>
+        <button class="ghost tiny" id="buff-clear" title="Remove every timer for this character">Clear all</button></div>
+        <div id="buff-list"></div></div>
+      <div class="panel"><div class="panel-h"><span>Debuffs <span class="muted" id="debuff-n"></span></span></div>
+        <div id="debuff-list"></div>
+        <div id="buff-recent"></div></div>
+    </div>
+    <div class="split buffs">
+      <div class="panel"><div class="panel-h"><span>Look up a spell</span></div>
+        <div class="buff-look"><input id="buff-look" placeholder="Spell name, e.g. Spirit of Wolf"><button class="ghost" id="buff-look-go">Look up</button></div>
+        <div id="buff-look-out"></div></div>
+      <div class="panel"><div class="panel-h"><span>Durations you set</span></div>
+        <p class="muted small">For spells the app doesn't know (EverQuest Legends' own spells, when the game's spell file isn't found),
+          or to override one. A spell with a duration set here gets a timer as soon as you cast it.</p>
+        <div class="buff-look"><input id="buff-c-name" placeholder="Spell name"><input id="buff-c-min" type="number" min="0.1" step="0.1" placeholder="minutes" style="width:90px">
+          <select id="buff-c-good"><option value="1">Buff</option><option value="0">Debuff</option></select><button class="ghost" id="buff-c-add">Save</button></div>
+        <div id="buff-custom"></div></div>
+    </div>
+    <p class="hint" id="buff-hint">A timer starts when a spell you cast lands — “You begin casting …”, then the spell's landing message names who it's on
+      (“Bobbin is surrounded by a brief lupine aura.”, or “You feel …” when it's on you). How long it lasts comes from the spell's duration
+      and your level, like the server works it out. Timers end early when the log says the spell wore off, or when the mob it's on dies.
+      Fizzles, interruptions and resists don't make a timer.</p>
   </section>
 
   <section id="tab-exalts" class="tab">

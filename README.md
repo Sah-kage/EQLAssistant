@@ -10,6 +10,8 @@ It only reads the log file the game already writes. No injection, no memory read
   - **DPS overlay**: current-fight DPS (live), average DPS over your last 10 fights with a bar chart, and your next respawn timers.
   - **Motes window**: motes collected this session, split by tier (Lesser, Major, Greater, …), with a per-hour rate.
   - **Dungeon crawl timer**: the live crawl time against your best for that zone and difficulty, with kills, deaths and motes.
+  - **Buff & debuff timers**: every buff and debuff you cast, who it's on and how long it has left. The window grows downwards as you cast more.
+- **Buffs**: timers for the buffs and debuffs you cast, with the target's name and the time left, worked out from the spell and your level.
 - **Respawn timers**: list the mobs you camp and their respawn times. A countdown starts automatically when one dies.
 - **Dungeon crawls**: how long each crawl took, timed automatically, with personal bests per zone and difficulty, plus a live crawl timer on the DPS overlay.
 - **Raids**: which raid bosses you've killed since the Tuesday reset, with the countdown to the next one.
@@ -72,10 +74,11 @@ The workflow in `.github/workflows/build-exe.yml` builds the .exe on GitHub's Wi
 
 ### The in-game windows (Overlays tab)
 
-The **Overlays** tab has a card for each in-game window (DPS overlay, Motes window, Dungeon crawl timer):
+The **Overlays** tab has a card for each in-game window (DPS overlay, Motes window, Dungeon crawl timer, Buff & debuff timers):
 - **On/off switch:** shows or closes the window straight away. An overlay that's on opens again next time you start the app; one that's off stays closed.
 - **Size** (60–250%) and **Opacity** (20–100%) sliders.
 - **Lock position and size**, and **Reset size and position**.
+- Buff & debuff timers only: show or hide **Buffs**, **Buffs on you** and **Debuffs**.
 - DPS overlay only: show or hide the **respawn timers**, and choose whether it also shows the crawl timer (handy if you'd rather not run the separate crawl window).
 
 On the windows themselves:
@@ -214,6 +217,18 @@ The **Deaths** tab keeps a recap of every death (the last 100 per character). A 
 - **Timeline:** everything that happened to you, newest first, with how many seconds before the death it was. This covers hits, misses, dodges, spells and DoT ticks, mobs starting to cast, heals, resists and stuns.
 
 The log has no hit point numbers, so the recap shows damage and heals, not your health bar. Deaths come from live play and the recent part of your log (Settings → Backfill on start).
+
+## Buffs and debuffs
+
+The **Buffs** tab shows a timer for every buff and debuff you cast: the spell, **who it's on**, a bar and the **time left**, and how long it lasts in all. Buffs and debuffs are listed separately. A badge on the tab shows how many are running.
+
+- **How a timer starts:** when a spell you cast lands. The log shows "You begin casting Spirit of Wolf.", then the spell's landing message names who it landed on ("Bobbin is surrounded by a brief lupine aura."), or says "You feel …" when it's on you. A group spell gets one timer per person it lands on. Casting the same spell on the same target again starts its timer over.
+- **How long it lasts:** worked out from the spell's duration formula and **your level**, the same way the server does (6-second ticks, up to the spell's longest duration). Your level comes from your last `/who` or a "Welcome to level …" line, or you can type it in at the top of the tab (it's per character).
+- **When a timer ends early:** the log says the spell wore off ("Your Tashan spell has worn off of a gnoll.", or the spell's own fade message when it's on you), the mob it's on dies, or (debuffs only) you zone. Fizzles, interruptions, resists and "did not take hold" make no timer. Resists show briefly under **Just now**. The × on a row removes that timer; **Clear all** removes them all.
+- **Spell data:** if the game folder (the folder your Logs folder is in) has the game's own spell file, `spells_us.txt` or `spells_en.txt`, the app reads it, so EverQuest Legends' own spells and changes are used. Otherwise it uses a built-in list of 2,100 classic spells that last a while (from the Project Quarm / EQMacEmu database). **Look up a spell** shows how long a spell lasts at your level and the messages the app watches for.
+- **Durations you set:** for a spell the app doesn't know (for example an EverQuest Legends spell when the game's spell file isn't there), set how many minutes it lasts and whether it's a buff or a debuff. It then gets a timer as soon as you cast it. The log doesn't say who it landed on, so it has no target. A duration set here also overrides the spell data.
+
+**The overlay:** switch it on at the top of the Buffs tab (or on the Overlays tab, or right-click it and Turn off). The opacity slider is right next to the switch, and you can pick whether it shows **Buffs**, **Buffs on you** and **Debuffs**. Each new buff or debuff is added at the bottom, so the window grows downwards from where you put it, and shrinks again as timers end. Times turn gold under 30 seconds and red under 10 seconds, and a timer that has ended stays dimmed for a few seconds. The overlay is off until you turn it on.
 
 ## Raids
 

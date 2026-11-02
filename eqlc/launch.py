@@ -20,11 +20,11 @@ def set_app_id():
             pass
 
 _overlay_procs = {}
-OVERLAY_KINDS = ("dps", "motes", "crawl")
+OVERLAY_KINDS = ("dps", "motes", "crawl", "buffs")
 
 
 def open_overlay_window(url, kind="dps"):
-    """Start an always-on-top overlay window ("dps", "motes" or "crawl") as its own process."""
+    """Start an always-on-top overlay window ("dps", "motes", "crawl" or "buffs") as its own process."""
     p = _overlay_procs.get(kind)
     if p is not None and p.poll() is None:
         return

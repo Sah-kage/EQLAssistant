@@ -12,7 +12,7 @@ header { display:flex; align-items:center; gap:24px; padding:10px 20px; border-b
 .brand b { color:var(--gold); }
 .brand { display:flex; align-items:center; gap:8px; }
 .logo { width:26px; height:26px; }
-nav { display:flex; gap:2px; flex:1; overflow-x:auto; scrollbar-width:none; }
+nav { display:flex; flex-wrap:wrap; gap:2px; flex:1; min-width:0; }   /* wraps to a second row instead of hiding tabs */
 nav::-webkit-scrollbar { display:none; }
 nav button, .seg button { background:none; border:0; color:var(--dim); padding:8px 12px; white-space:nowrap; border-radius:6px;
   cursor:pointer; font:inherit; }
@@ -467,3 +467,27 @@ pre.crash { white-space:pre-wrap; max-height:60vh; overflow:auto; background:var
 .lvl-chip.unknown { background:#ffffff10; color:var(--dim); border:1px dashed var(--line); }
 .lvlpick select { font-size:12px; padding:1px 4px; }
 .raid-chip { font-size:11px; padding:1px 7px; border-radius:9px; background:#f0776c26; color:#f0a39b; }
+
+/* ---------- buffs ---------- */
+.buff-top { margin-bottom:14px; }
+.buff-ctl { display:flex; flex-wrap:wrap; gap:14px 28px; align-items:center; }
+.buff-ctl input[type=number] { width:72px; margin-left:6px; }
+.buff-ov { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+.buff-ov .ov-name { flex:none; font-size:14px; }
+.buff-ov .ov-row { grid-template-columns:auto 140px 40px; margin:0; }
+.split.buffs { grid-template-columns:1fr 1fr; margin-bottom:14px; }
+@media (max-width:900px) { .split.buffs { grid-template-columns:1fr; } }
+table.bufft td.left { width:34%; }
+.btime { display:flex; align-items:center; gap:8px; }
+.btime .track { flex:1; height:6px; background:var(--panel2); border-radius:3px; overflow:hidden; min-width:50px; }
+.btime .track i { display:block; height:100%; background:var(--green); border-radius:3px; }
+.btime.debuff .track i { background:#d2a8ff; }
+.btime.near .track i { background:var(--gold); } .btime.near b { color:var(--gold); }
+.btime.warn .track i { background:var(--red); } .btime.warn b { color:var(--red); }
+.btime b { font-variant-numeric:tabular-nums; font-weight:600; min-width:48px; text-align:right; }
+tr.bdone td { opacity:.5; }
+.buff-look { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+.buff-look input:not([type=number]) { flex:1; min-width:160px; }
+.bver { border-top:1px solid var(--line); padding:6px 0; font-size:13px; }
+.bver q { color:var(--dim); quotes:"“" "”"; }
+table.bufft th:nth-child(2), table.bufft td:nth-child(2) { text-align:left; color:var(--dim); }
