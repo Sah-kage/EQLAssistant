@@ -446,8 +446,8 @@ class SubmitTests(unittest.TestCase):
         self.assertEqual(raid_of("Unrest"), (None, None))
         lines = [(0, "You have entered Plane of Hate 12."), (30, "You have slain Lord of Ire!"),
                  (200, "--Bobbin has looted a Mithril Greaves from Maestro of Rancor's corpse.--"),   # not the last boss
-                 (400, "Innoruuk has been slain by Bobbin!"),
-                 (430, "--Bobbin has looted Innoruuk's Curse from Innoruuk's corpse.--"),            # ends here
+                 (400, "Innoruuk has been slain by Bobbin!"),                                         # ends here
+                 (430, "--Bobbin has looted Innoruuk's Curse from Innoruuk's corpse.--"),
                  (440, "--You have looted a Gem from Innoruuk's corpse.--")]
         c = Crawls({})
         feed(c, "Me_x", lines[:3])
@@ -456,7 +456,8 @@ class SubmitTests(unittest.TestCase):
         r = c.runs[-1]
         s = c._summary(r, T0 + 600)
         self.assertEqual((s["status"], s["category"], s["boss"], s["duration"], s["tier_label"]),
-                         ("done", "raid", "Innoruuk", 400, "D0"))      # an instance with no tier name is Base
+                         ("done", "raid", "Innoruuk", 370, "D0"))      # an instance with no tier name is Base
+        self.assertEqual((s["boss_end"], s["ended_by"]), ("kill", "boss"))
         self.assertEqual(s["proof"]["status"], "verified")
         r.update(level=None, tier="")                                 # as if the log hadn't shown it
         c.set_level(r["id"], 2)                                       # raids have a difficulty too: pick it
@@ -470,7 +471,7 @@ class SubmitTests(unittest.TestCase):
         for ln in doc["lines"]:
             doc["chain"] = I.chain(doc["chain"], ln)
         doc["checks"]["lines"] = len(doc["lines"])
-        self.assertTrue(I.check_proof(doc)["ok"], I.check_proof(doc))  # time = first kill -> boss loot
+        self.assertTrue(I.check_proof(doc)["ok"], I.check_proof(doc))  # time = first kill -> boss kill
         # a dungeon crawl in a raid zone still ends at the Reward Chest
         c2 = Crawls({})
         feed(c2, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
@@ -498,13 +499,45 @@ class SubmitTests(unittest.TestCase):
         feed(c, "Me_x", [(0, "You have entered The Plane of Fear - Solo 1 (Awakened)."), (20, "You have slain a goblin!"),
                          (600, "Me has been removed from the instance.")])
         s = c._summary(c.runs[-1], T0 + 700)
-        self.assertEqual((s["ended_by"], s["raid_boss"]), ("removed", "Cazic Thule"))
+        self.assertEqual((s["ended_by"], s["raid_boss"]), ("removed", "Cazic-Thule"))
         self.assertIn("removed from", s["end_line"])
         c3 = Crawls({})
         feed(c3, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!")])
         r = c3.runs[-1]
         r.update(status="done", end=T0 + 300)                      # timed out / left, no boss loot
         self.assertIsNone(c3._summary(r, T0 + 400)["ended_by"])   # no chest, no boss: neither
+
+    def test_raid_boss_names_and_loot_fallback(self):
+        from eqlc.crawls import Crawls, raid_of, boss_loot_line, same_boss
+        from eqlc.raids import Raids
+        self.assertEqual(raid_of("Plane of Fear"), ("Plane of Fear", "Cazic-Thule"))
+        self.assertTrue(same_boss("Cazic Thule", "Cazic-Thule") and same_boss("cazic`thule", "Cazic-Thule"))
+        self.assertTrue(boss_loot_line("--You have looted a Mask from Cazic Thule's corpse.--", "Cazic-Thule"))
+        self.assertFalse(boss_loot_line("--You have looted a Mask from Dread's corpse.--", "Cazic-Thule"))
+        # the kill ends it, however the name is written
+        for name in ("Cazic-Thule", "Cazic Thule"):
+            c = Crawls({})
+            feed(c, "Me_x", [(0, "You have entered The Plane of Fear - Solo 1 (Awakened)."), (20, "You have slain a scareling!"),
+                             (500, f"{name} has been slain by Bobbin!"),
+                             (520, "--You have looted a Mask from Cazic-Thule's corpse.--")])
+            s = c._summary(c.runs[-1], T0 + 600)
+            self.assertEqual((s["category"], s["boss"], s["boss_end"], s["duration"]), ("raid", "Cazic-Thule", "kill", 480))
+        # no kill line in the log: the loot ends it
+        c = Crawls({})
+        feed(c, "Me_x", [(0, "You have entered Permafrost 3 (Fused)."), (20, "You have slain a goblin!"),
+                         (500, "--Bobbin has looted a Gem from Lady Vox's corpse.--")])
+        s = c._summary(c.runs[-1], T0 + 600)
+        self.assertEqual((s["boss_end"], s["duration"]), ("loot", 480))
+        # the Raids tab counts the kill under its listed name, and older "Cazic Thule" kills still count
+        st = {}
+        rd = Raids(st, {"raid_eras": ["Classic"]})
+        rd.process("Me_x", time.time() - 60, {"type": "death", "tgt": "Cazic-Thule", "src": "Bobbin"})
+        st["raid_kills"].append({"t": time.time() - 30, "boss": "Cazic Thule", "killer": "", "char": "Me_x",
+                                 "zone": None, "level": None, "raw": None})
+        fear = [g for g in rd.view("Me_x")["groups"] if g["group"] == "Plane of Fear"][0]
+        ct = [b for b in fear["bosses"] if b["boss"] == "Cazic-Thule"][0]
+        self.assertEqual((ct["killed"], len(ct["kills"])), (True, 2))
+        self.assertEqual(rd.view("Me_x")["unlisted"], [])
 
     def test_raid_keeps_its_difficulty(self):
         from eqlc.crawls import Crawls

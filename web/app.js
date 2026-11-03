@@ -535,15 +535,15 @@ const hms = s => {
 // How a run actually ended, in words (the same for the run's details and its leaderboard note).
 function endedHow(r) {
   const boss = r.boss || r.raid_boss || 'the final boss';
-  if (r.status === 'active') return r.raid_boss ? `still running: a crawl ends at the Reward Chest, a raid when ${esc(boss)}'s corpse is looted` : 'still running: it ends at the Reward Chest';
+  if (r.status === 'active') return r.raid_boss ? `still running: a crawl ends at the Reward Chest, a raid when ${esc(boss)} is killed` : 'still running: it ends at the Reward Chest';
   if (r.stopped || r.ended_by === 'hand') return 'ended by hand';
   if (r.ended_by === 'removed') return `by the log line “${esc(r.end_line || 'has been removed from')}”`;
-  if (r.ended_by === 'boss') return `${esc(boss)}'s corpse was looted`;
+  if (r.ended_by === 'boss') return r.boss_end === 'kill' ? `${esc(boss)} was killed` : `${esc(boss)}'s corpse was looted (the kill line wasn't in the log)`;
   if (r.category === 'raid') return `not ended by ${esc(boss)}'s loot (the log stopped or you left the zone)`;
   if (r.chest && r.chest.length) return 'first item looted from the Reward Chest';
   return 'the run timed out or you left the zone';
 }
-const lvlChip = r => (r.category === 'raid' ? '<span class="raid-chip" title="Raid run: timed until the final boss is looted">Raid</span> ' : '') + `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
+const lvlChip = r => (r.category === 'raid' ? '<span class="raid-chip" title="Raid run: timed until the final boss is killed">Raid</span> ' : '') + `<span class="lvl-chip l${r.level ?? 0}${r.level == null && r.tier_label === '?' ? ' unknown' : ''}"${r.level_by_hand ? ' title="Difficulty set by hand"' : ''}>${esc(r.tier_label === '?' ? 'D?' : r.tier_label)}${r.level_by_hand ? '*' : ''}${r.mode ? ' · ' + esc(r.mode) : ''}</span>`;
 const DIFFS = ['D0 Base', 'D1 Awakened', 'D2 Adaptive', 'D3 Fused', 'D4 Refined'];
 // the log didn't show the difficulty: let the player pick it (or change one they picked)
 const levelPicker = r => (r.level == null || r.level_by_hand) ? `<span class="lvlpick"><select data-setlevel="${r.id}" title="The log didn't show this run's difficulty">
@@ -585,8 +585,8 @@ function lbStatus(r) {
     return sent + ` <button class="ghost tiny" data-submit="${r.id}" title="Change the classes and send the run again. It will show as edited.">Edit classes &amp; resubmit…</button>`;
   }
   const err = r.submit_error ? `<span class="lb err">Not sent: ${esc(r.submit_error.msg)}</span> ` : '';
-  if (r.stopped) return '<span class="muted" title="Only crawls ended by the Reward Chest (or raids ended by the final boss loot) can be sent">Ended by hand — can\'t be sent to the leaderboard</span>';
-  if (r.ended_by === 'removed') return `<span class="muted" title="${esc(r.end_line || '')}">Ended by “has been removed from” — can\'t be sent to the leaderboard (only Reward Chest or final-boss endings can)</span>`;
+  if (r.stopped) return '<span class="muted" title="Only crawls ended by the Reward Chest (or raids ended by the final boss kill) can be sent">Ended by hand — can\'t be sent to the leaderboard</span>';
+  if (r.ended_by === 'removed') return `<span class="muted" title="${esc(r.end_line || '')}">Ended by “has been removed from” — can\'t be sent to the leaderboard (only Reward Chest or final-boss kill endings can)</span>`;
   const can = r.status === 'done' && r.start_known && r.proof && r.proof.status !== 'suspicious';
   return err + (can ? `<button class="primary" data-submit="${r.id}">${r.submit_error ? 'Try again…' : 'Submit to leaderboard…'}</button>` : '');
 }
@@ -650,9 +650,9 @@ function crawlNow(d) {
         <div><label>Outside</label><b>${hms(c.outside)}</b></div></div>
       <p class="hint">${c.waiting_kill ? (c.armed === 'zone'
         ? `You entered <code>${esc(c.raw || c.zone)}</code> at ${clock(c.offered)} (no “is now available” line — normal when someone else in your group opened the crawl). The timer starts on your first kill in it`
-        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. ${c.raid_boss ? `A dungeon crawl ends at the first loot from the Reward Chest; a raid here ends when ${esc(c.raid_boss)}'s corpse is looted.` : 'It ends when the first item is looted from the Reward Chest.'}</p>`;
+        : `<code>${esc(c.raw || c.zone)}</code> became available at ${clock(c.offered)}${c.entered ? '' : ' (not entered yet)'}. The timer starts on your first kill in it`) : `Timer started on the first kill at ${clock(c.start)}${c.start_known ? '' : ' (no “is now available” line seen, so this run won\'t count as a best)'}`}. ${c.raid_boss ? `A dungeon crawl ends at the first loot from the Reward Chest; a raid here ends when ${esc(c.raid_boss)} is killed (raids have no Reward Chest).` : 'It ends when the first item is looted from the Reward Chest.'}</p>`;
   }
-  if (j) return `<div class="panel-h"><span>${j.stopped ? 'Crawl ended by hand' : j.ended_by === 'removed' ? 'Crawl ended (removed from the instance)' : j.category === 'raid' ? `Raid complete — ${esc(j.boss)} looted` : 'Crawl complete'}${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
+  if (j) return `<div class="panel-h"><span>${j.stopped ? 'Crawl ended by hand' : j.ended_by === 'removed' ? 'Crawl ended (removed from the instance)' : j.category === 'raid' ? `Raid complete — ${esc(j.boss)} ${j.boss_end === 'kill' ? 'killed' : 'looted'}` : 'Crawl complete'}${j.new_pb ? ' — <span class="gold">new personal best!</span>' : ''}</span></div>
       <div><b>${esc(j.zone)}</b> ${lvlChip(j)} ${levelPicker(j)} ${partyChip(j)}</div>
       <div class="crawl-live"><span class="big done">${hms(j.duration)}</span>
         ${j.pb != null ? `<span class="pbline">previous best <b>${hms(j.pb)}</b> ${deltaHtml(j.duration - j.pb)}</span>` : ''}</div>
@@ -670,7 +670,7 @@ async function refreshCrawls() {
   if (!d || !d.char) { $('#crawl-now').innerHTML = '<div class="empty">No character yet — set your Logs folder in Settings.</div>'; return; }
   $('#crawl-now').innerHTML = crawlNow(d);
   $('#crawl-stop')?.addEventListener('click', async () => {
-    if (confirm('End this crawl now and keep its time?\n\nA crawl ended by hand can\'t be sent to the leaderboard (only ones ended by the Reward Chest, or a raid\'s final boss loot, can).')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
+    if (confirm('End this crawl now and keep its time?\n\nA crawl ended by hand can\'t be sent to the leaderboard (only ones ended by the Reward Chest, or a raid\'s final boss kill, can).')) { await post('/api/crawls/stop', {char}); refreshCrawls(); }
   });
   $('#crawl-reset')?.addEventListener('click', async () => {
     const r = await post('/api/crawls/reset', {char});

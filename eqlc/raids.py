@@ -20,7 +20,7 @@ BOSSES = [
     ("Classic", "Kedge Keep", [("Phinigel Autropos", False)], ""),
     ("Classic", "The Hole", [("Master Yael", False)], ""),
     ("Classic", "Plane of Fear", [("Dread", True), ("Fright", True), ("Terror", True), ("Dracoliche", False),
-                                  ("Cazic Thule", False)], ""),
+                                  ("Cazic-Thule", False)], ""),
     ("Classic", "Plane of Hate", [("Ashenbone Broodmaster", True), ("Avatar of Abhorrence", True),
                                   ("Coercer T`vala", True), ("Grandmaster R`Tal", True), ("High Priest M`kari", True),
                                   ("Lord of Ire", True), ("Lord of Loathing", True), ("Magi P`Tasa", True),
@@ -53,7 +53,8 @@ ERAS = ["Classic", "Kunark", "Velious"]
 
 
 def _k(s):
-    return (s or "").lower().replace("`", "'").strip()
+    """Boss names for comparing: case, spaces, hyphens and quotes don't matter ('Cazic-Thule' = 'Cazic Thule')."""
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
 
 
 # ----------------------------------------------------------------- reset time
@@ -117,7 +118,7 @@ class Raids:
         if not name:
             return None
         for k in reversed(self.kills[-50:]):      # same kill seen twice (two log lines / rescan)
-            if k["char"] == char and k["boss"] == name and abs(k["t"] - t) <= 5:
+            if k["char"] == char and _k(k["boss"]) == _k(name) and abs(k["t"] - t) <= 5:
                 return None
         rec = {"t": t, "boss": name, "killer": ev.get("src") or "", "char": char,
                "zone": zone.get("zone") if zone else None, "level": zone.get("level") if zone else None,
@@ -165,8 +166,8 @@ class Raids:
             rows = []
             for name, mini in bosses:
                 all_names.add(name)
-                ks = [k for k in inweek if k["boss"] == name]
-                last_any = next((k for k in reversed(mine) if k["boss"] == name), None)
+                ks = [k for k in inweek if _k(k["boss"]) == _k(name)]
+                last_any = next((k for k in reversed(mine) if _k(k["boss"]) == _k(name)), None)
                 repeat = None
                 if ks and week == 0:
                     ready = ks[-1]["t"] + REPEAT_HOURS * 3600
@@ -178,7 +179,8 @@ class Raids:
                              "repeat_at": repeat, "last_ever": last_any["t"] if last_any else None})
             groups.append({"era": era, "group": group, "note": note, "bosses": rows,
                            "done": sum(r["killed"] for r in rows), "total": len(rows)})
-        unlisted = sorted({k["boss"] for k in inweek} - all_names)
+        listed = {_k(n) for n in all_names}
+        unlisted = sorted({k["boss"] for k in inweek if _k(k["boss"]) not in listed})
         return {"char": char, "week": int(week), "start": start, "end": end, "now": now,
                 "next_reset": next_reset(now, wd, hr), "groups": groups, "eras": ERAS, "shown_eras": eras,
                 "kills_this_week": len(inweek), "unlisted": unlisted,

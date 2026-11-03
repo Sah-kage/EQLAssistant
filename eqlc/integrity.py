@@ -79,18 +79,20 @@ def verdict(run):
     if run["status"] == "active":
         return {"status": "pending", "reasons": ["Run still in progress."]}
     why, bad = [], False
+    end = "the raid boss's kill" if run.get("category") == "raid" else "the Reward Chest"
+    end_line = "The raid boss's kill line" if run.get("category") == "raid" else "The Reward Chest line"
     if p.get("history"):
         why.append("Read from older log lines: the app wasn't running and watching while this run was played.")
     if not run.get("start_known"):
         why.append("No \"is now available\" line before the run, so the start time isn't known.")
     if run["status"] != "done":
-        why.append("The run never reached the Reward Chest.")
+        why.append(f"The run never reached {end}.")
     if p.get("manual_start"):
         why.append("The timer was restarted by hand.")
     if p.get("manual_stop"):
-        why.append("The timer was stopped by hand, not by the Reward Chest.")
+        why.append(f"The timer was stopped by hand, not by {end}.")
     if p.get("removed_end"):
-        why.append("The timer ended at a \"has been removed from\" line, not the Reward Chest.")
+        why.append(f"The timer ended at a \"has been removed from\" line, not {end}.")
     if not p.get("history"):
         if p["start_lag"] is None or p["start_mono"] is None:
             why.append("The first kill wasn't seen live.")
@@ -99,10 +101,10 @@ def verdict(run):
             why.append(f"The first kill reached the app {p['start_lag']:.0f}s after its time stamp.")
         if run["status"] == "done":
             if p["end_lag"] is None:
-                why.append("The Reward Chest line wasn't seen live.")
+                why.append(f"{end_line} wasn't seen live.")
             elif p["end_lag"] > LAG:
                 bad = True
-                why.append(f"The Reward Chest line reached the app {p['end_lag']:.0f}s after its time stamp.")
+                why.append(f"{end_line} reached the app {p['end_lag']:.0f}s after its time stamp.")
         if p["start_session"] and p["end_session"] and p["start_session"] != p["end_session"]:
             why.append("The app was restarted during the run.")
         # runs recorded when the limit was lower counted lines as late against that limit:
@@ -185,8 +187,9 @@ def build_proof(run, summary, lines, app_version):
             "created": time.time(), "char": run["char"].partition("_")[0],
             "server": run["char"].partition("_")[2], "zone": run["zone"], "raw_zone": run["raw"],
             "tier": summary.get("tier_label"), "duration": summary.get("duration"),
-            # raids end when the final boss is looted ("from Lady Vox's corpse"), not at a Reward Chest
+            # raids end when the final boss is killed (or, if that line was missed, looted): no Reward Chest
             "category": run.get("category") or "crawl", "raid": run.get("raid"), "end_boss": run.get("boss"),
+            "end_by": run.get("boss_end") if run.get("category") == "raid" else "chest",
             "start": run["start"], "end": run["end"], "kills": run["kills"], "deaths": run["deaths"],
             "verdict": v, "checks": {k: run["proof"].get(k) for k in
                                      ("lines", "late", "max_lag", "ooo", "start_lag", "end_lag", "file_events",
@@ -209,7 +212,9 @@ def check_proof(doc):
     if doc.get("checks", {}).get("lines") not in (None, len(lines)):
         problems.append(f"The proof says {doc['checks']['lines']} lines but contains {len(lines)}.")
     times = []
-    first_kill = chest = None
+    from .crawls import boss_kill, boss_loot_line
+    raid = doc.get("category") == "raid" and doc.get("end_boss")
+    first_kill = chest = kill = loot = None
     for ln in lines:
         r = parse_line(ln)
         if not r:
@@ -218,12 +223,16 @@ def check_proof(doc):
         times.append(t)
         if first_kill is None and ev and ev.get("type") == "death" and ev.get("tgt") not in ("You", "YOU"):
             first_kill = t
-        if chest is None and "from reward chest" in ln.lower():
+        if raid:
+            # raids have no Reward Chest: they end at the final boss's kill (or its loot if the kill line is missing)
+            if kill is None and boss_kill(ev, doc["end_boss"]):
+                kill = t
+            if loot is None and boss_loot_line(ln.split("] ", 1)[-1], doc["end_boss"]):
+                loot = t
+        elif chest is None and "from reward chest" in ln.lower():
             chest = t
-        if chest is None and doc.get("category") == "raid" and doc.get("end_boss"):
-            from .crawls import boss_loot_line
-            if boss_loot_line(ln.split("] ", 1)[-1], doc["end_boss"]):
-                chest = t
+    if raid:
+        chest = kill if kill is not None else loot
     if any(b < a - 1 for a, b in zip(times, times[1:])):
         problems.append("Time stamps in the lines go backwards.")
     if first_kill is not None and chest is not None and doc.get("duration") is not None:
@@ -231,7 +240,8 @@ def check_proof(doc):
         if abs(d - doc["duration"]) > 2:
             problems.append(f"The lines give a duration of {d}s, but the proof claims {doc['duration']}s.")
     elif doc.get("verdict", {}).get("status") == "verified":
-        problems.append("The lines don't contain both a first kill and a Reward Chest line.")
+        problems.append("The lines don't contain both a first kill and " +
+                        (f"{doc['end_boss']}'s kill." if raid else "a Reward Chest line."))
     return {"ok": not problems, "problems": problems, "verdict": doc.get("verdict"),
             "char": doc.get("char"), "zone": doc.get("zone"), "tier": doc.get("tier"),
             "duration": doc.get("duration"), "lines": len(lines)}

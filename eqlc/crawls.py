@@ -92,10 +92,11 @@ def same_zone(a, b):
     return bool(a) and bool(b) and norm(a) == norm(b)
 
 
-# Raids: the run ends when the raid's final boss is looted ("--You have looted ... from Lady Vox's corpse.--"),
-# not at a Reward Chest. Final boss of each Classic raid (same list as the Raids tab and the leaderboard).
+# Raids: there's no Reward Chest; the run ends when the raid's final boss is killed ("Cazic-Thule has been
+# slain by Bobbin!"). If the kill line is missed, looting the boss ("... from Cazic-Thule's corpse.--") ends it.
+# Final boss of each Classic raid, as the game spells them (same list as the Raids tab and the leaderboard).
 RAID_FINAL = {"Nagafen's Lair": "Lord Nagafen", "Permafrost": "Lady Vox", "Kedge Keep": "Phinigel Autropos",
-              "The Hole": "Master Yael", "Plane of Fear": "Cazic Thule", "Plane of Hate": "Innoruuk"}
+              "The Hole": "Master Yael", "Plane of Fear": "Cazic-Thule", "Plane of Hate": "Innoruuk"}
 _RAID_ALIASES = {"permafrostkeep": "Permafrost", "permafrostcaverns": "Permafrost", "solusekbsnagafenslair": "Nagafen's Lair",
                  "lavastormnagafenslair": "Nagafen's Lair", "ruinsofoldpaineel": "The Hole", "hole": "The Hole",
                  "kedgekeepcavern": "Kedge Keep", "planeoffeardread": "Plane of Fear", "planeofhaterevisited": "Plane of Hate"}
@@ -117,10 +118,27 @@ def raid_of(zone):
     return (z, RAID_FINAL[z]) if z else (None, None)
 
 
+def boss_key(name):
+    """A boss name for comparing: 'Cazic-Thule', 'Cazic Thule' and 'cazic`thule' are the same boss."""
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
+def same_boss(a, b):
+    return bool(a) and bool(b) and boss_key(a) == boss_key(b)
+
+
+_CORPSE_RE = re.compile(r" looted .*? from (?P<who>.+?)['`]s corpse", re.I)
+
+
 def boss_loot_line(msg, boss):
-    """'--Bobbin has looted a Spear from Lady Vox's corpse.--' (anyone's loot) for this boss."""
-    m = msg.lower().replace("`", "'")
-    return " looted " in m and f"from {boss.lower().replace('`', chr(39))}'s corpse" in m
+    """'--Bobbin has looted a Spear from Cazic-Thule's corpse.--' (anyone's loot) for this boss."""
+    m = _CORPSE_RE.search(msg or "")
+    return bool(m) and same_boss(m.group("who"), boss)
+
+
+def boss_kill(ev, boss):
+    """A death line for this boss: 'Cazic-Thule has been slain by Bobbin!', 'You have slain Cazic-Thule!'."""
+    return bool(ev) and ev.get("type") == "death" and ev.get("tgt") not in ("You", "YOU") and same_boss(ev.get("tgt"), boss)
 
 
 def tier_label(level, tier=""):
@@ -399,7 +417,7 @@ class Crawls:
         if line and "from reward chest" in line.lower():
             self._chest(char, t)
         elif line and "corpse" in line and self._raid_end(char, t, line.split("] ", 1)[-1]):
-            pass
+            pass                                         # (the boss's kill line was missed: its loot ends it)
         elif line and "removed from" in line and removed_line(line.split("] ", 1)[-1]):
             self._removed(char, t, line.split("] ", 1)[-1])
         if typ == "zone":
@@ -420,6 +438,7 @@ class Crawls:
                         r.update(start=t, waiting_kill=False, outside=0.0, exits=0)
                         if r.get("proof") is not None:
                             I.mark(r["proof"], "start", t, self._meta)
+                    self._raid_end(char, t, ev=ev)          # the raid's final boss died: the raid is over
                 self.dirty = True
         elif typ == "xp":
             r = self._inside(char) or self._recent(char, t)
@@ -503,13 +522,22 @@ class Crawls:
         self.active.pop(char, None)
         self.dirty = True
 
-    def _raid_end(self, char, t, msg):
-        """In a raid zone, looting the raid's final boss ends the run (a raid run, not a crawl)."""
+    def _raid_end(self, char, t, msg=None, ev=None):
+        """In a raid zone, killing the raid's final boss ends the run (a raid run, not a crawl).
+        Looting it ends it too, for when the kill line was missed."""
         r = self.current(char)
         if not r or r["status"] != "active":
             return False
         raid, boss = raid_of(r["zone"])
-        if not boss or not boss_loot_line(msg, boss):
+        if not boss:
+            return False
+        if ev is not None:
+            if not boss_kill(ev, boss):
+                return False
+            how = "kill"
+        elif msg is not None and boss_loot_line(msg, boss):
+            how = "loot"
+        else:
             return False
         if r.get("waiting_kill"):
             r.update(waiting_kill=False, start_known=False)
@@ -518,9 +546,9 @@ class Crawls:
         if r["left_at"] is not None:
             r["outside"] += max(0.0, t - r["left_at"])
             r["left_at"] = None
-        r.update(end=t, last=t, status="done", ended_by="boss", category="raid", raid=raid, boss=boss)
+        r.update(end=t, last=t, status="done", ended_by="boss", boss_end=how, category="raid", raid=raid, boss=boss)
         self.active.pop(char, None)
-        LOG.debug("raid run %s ended by looting %s after %ss", r["id"], boss, round(t - r["start"]))
+        LOG.debug("raid run %s ended by the %s of %s after %ss", r["id"], how, boss, round(t - r["start"]))
         self.dirty = True
         return True
 
@@ -825,6 +853,7 @@ class Crawls:
             "level": r["level"], "tier": r["tier"],
             "tier_label": tier_label(r["level"], r["tier"]),
             "category": r.get("category") or "crawl", "raid": r.get("raid"), "boss": r.get("boss"),
+            "boss_end": r.get("boss_end") or ("loot" if r.get("ended_by") == "boss" else None),
             "raid_boss": raid_of(r["zone"])[1],
             "level_by_hand": bool(r.get("level_by_hand")),
             "start": r["start"], "end": r["end"], "status": r["status"], "start_known": r["start_known"],
@@ -934,6 +963,7 @@ class Crawls:
                         "new_pb": r["start_known"] and (pb is None or d < pb), "kills": r["kills"],
                         "deaths": r["deaths"], "motes": sum(r["motes"].values()), "start_known": r["start_known"],
                         "party": self.party(r), "players": self.players(r), "stopped": bool(r.get("stopped")),
-                        "ended_by": r.get("ended_by"), "boss": r.get("boss"), "category": r.get("category") or "crawl"}
+                        "ended_by": r.get("ended_by"), "boss": r.get("boss"), "category": r.get("category") or "crawl",
+                        "boss_end": r.get("boss_end") or "loot"}
             break
         return None
